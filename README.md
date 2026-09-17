@@ -18,6 +18,12 @@ Per-workspace **masonry** for [Omarchy](https://omarchy.org/) / Hyprland. Shortc
 
 This is a Hyprland Lua layout (`lua:omansory`). It does **not** ride on top of scrolling: while it is on, that workspace *is* Omansory. Windows stay axis-aligned rectangles (no L-shapes). Inner gaps are turned off on that workspace so tiles meet without a wallpaper strip.
 
+## Demo
+
+Masonry (`Super+Shift+O`) and Center (`Super+Alt+O`) on a busy workspace — calculator, LibreOffice Writer, browser, and X:
+
+https://github.com/alcure/omansory/blob/main/docs/omansory-demo.mp4
+
 ## Install
 
 Plugin id: `alcure.omansory`. Public repo: https://github.com/alcure/omansory

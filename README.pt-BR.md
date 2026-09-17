@@ -18,6 +18,12 @@
 
 É um layout Lua do Hyprland (`lua:omansory`). Ele **não** se encaixa em cima do scrolling: enquanto está ligado, aquele workspace *é* Omansory. Só retângulos alinhados aos eixos (sem L). Nesse workspace o `gaps_in` interno vai a zero para as molduras se encostarem, sem filete de wallpaper.
 
+## Demonstração
+
+Masonry (`Super+Shift+O`) e Centro (`Super+Alt+O`) num workspace cheio — calculadora, LibreOffice Writer, navegador e X:
+
+https://github.com/alcure/omansory/blob/main/docs/omansory-demo.mp4
+
 ## Instalar
 
 Id do plugin: `alcure.omansory`. Repositório: https://github.com/alcure/omansory
