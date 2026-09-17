@@ -7,13 +7,6 @@ local LAYOUT_NAME = "omansory"
 
 local workspaces = {}
 
-local function vec(value)
-  if type(value) ~= "table" then
-    return nil, nil
-  end
-  return tonumber(value.x or value.w or value[1]), tonumber(value.y or value.h or value[2])
-end
-
 local function box(x, y, w, h)
   return { x = x, y = y, w = w, h = h }
 end
@@ -237,16 +230,10 @@ local function sync_columns(ctx, ws)
 end
 
 local function preferred_height(ws, target, id, area_h, fallback)
-  local stored = ws.height[id]
-  if stored and stored > 0 then
-    return clamp(stored, MIN_H, area_h)
-  end
-  local window = target.window
-  if window then
-    local _, height = vec(window.size)
-    if height and height > 0 then
-      return clamp(height, MIN_H, area_h)
-    end
+  -- Never trust window.size here: leaving scrolling reports tape/camera boxes
+  -- (full strip width, tiny height) and that packs into overlapping slices.
+  if ws.user_h[id] and ws.height[id] and ws.height[id] > 0 then
+    return clamp(ws.height[id], MIN_H, area_h)
   end
   return fallback
 end

@@ -61,6 +61,8 @@ Shortest-column packing: windows keep a remembered height when they can; a colum
 
 Floating / pinned windows (including Omarchy `Super+O` pop-out) are left alone.
 
+Switching off scrolling used to leave popin ghosts and overlapping tiles, because the tape reports the wrong last size. Omansory now packs from a clean equal split, with window animations paused for the switch.
+
 ## Uninstall
 
 ```sh

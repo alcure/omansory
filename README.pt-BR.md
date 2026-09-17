@@ -61,6 +61,8 @@ Empacota na coluna mais baixa: a janela tenta manter a altura que já tinha; se 
 
 Janelas flutuantes / pinadas (incluindo o pop-out `Super+O` do Omarchy) ficam de fora.
 
+Sair do scrolling deixava “fantasmas” de popin e tiles sobrepostos, porque a fita reporta o tamanho errado. O Omansory agora empacota a partir de um split limpo, com as animações de janela pausadas na troca.
+
 ## Desinstalar
 
 ```sh
