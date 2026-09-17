@@ -58,7 +58,7 @@ Ao **ligar**, aparece o cartão da grade magenta (ON · ATIVO). Ao **desligar**,
 
 ## O que o layout faz
 
-O empilhamento em colunas iguais continua em `omansory mode columns`. O padrão **fit** usa um bin skyline: navegadores tendem a ficar largos, terminais altos, e as peças se encaixam com furos de wallpaper. As janelas continuam retângulos — o Hyprland não recorta em L — mas o arranjo deixa de ser uma grade perfeita.
+O padrão **fit** divide a área de trabalho inteira: todas as janelas tiled ficam na tela e não sobra furo de wallpaper. Navegadores, editores e documentos ganham mais área que terminais; Super± ainda ajusta a fatia da janela focada. `omansory mode columns` volta às colunas iguais.
 
 Janelas flutuantes / pinadas (incluindo o pop-out `Super+O` do Omarchy) ficam de fora.
 

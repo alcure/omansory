@@ -58,7 +58,7 @@ Turning it **on** shows the magenta-grid card (ON · ATIVO). Turning it **off** 
 
 ## What you get
 
-Shortest-column packing is available as `omansory mode columns`. The default **fit** mode uses a skyline bin: browsers tend to sit wide, terminals tall, so tiles lock together with leftover wallpaper holes. Windows remain rectangles — Hyprland cannot clip an L-shape — but the arrangement is no longer a perfect grid.
+The default **fit** mode splits the whole work area so every tiled window stays on screen and wallpaper holes are filled. Browsers, editors, and documents get more area than terminals; Super± still nudges the focused window's share. `omansory mode columns` restores equal columns.
 
 Floating / pinned windows (including Omarchy `Super+O` pop-out) are left alone.
 

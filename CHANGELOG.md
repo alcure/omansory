@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1 — 2026-09-17
+
+- Fit mode now fills the monitor with a weighted binary split: every window stays on-screen (no tile dropped “below”), leftover gaps are gone, and browsers/editors outrank terminals.
+
 ## 1.2.0 — 2026-09-17
 
 - Bar glyph next to the workspaces (magenta when masonry is on, with the workspace ids) and a retrowave overlay flash on toggle.
