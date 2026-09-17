@@ -14,7 +14,7 @@
 
 Per-workspace **masonry** for [Omarchy](https://omarchy.org/) / Hyprland. Shortcuts pack tiled windows on **the active workspace only**. Other workspaces keep dwindle, scrolling, or whatever they already use.
 
-This is a Hyprland Lua layout (`lua:omansory`). It does **not** ride on top of scrolling: while it is on, that workspace *is* Omansory. Windows stay axis-aligned rectangles (no L-shapes).
+This is a Hyprland Lua layout (`lua:omansory`). It does **not** ride on top of scrolling: while it is on, that workspace *is* Omansory. Windows stay axis-aligned rectangles (no L-shapes). Inner gaps are turned off on that workspace so tiles meet without a wallpaper strip.
 
 ## Install
 
@@ -28,53 +28,62 @@ chmod +x install.sh bin/omansory
 The installer:
 
 1. Symlinks the layout into `~/.config/hypr/omansory.lua` and the CLI into `~/.local/bin/omansory`.
-2. Inserts marked blocks in `hyprland.lua` and `bindings.lua` (timestamped backups first).
+2. Inserts marked `-- BEGIN omansory` blocks in `hyprland.lua` and `bindings.lua` (timestamped backups first).
 3. **Replaces Super+Shift+O** (stock Obsidian) with the fit-masonry toggle.
 4. Remaps Obsidian to **Super+Shift+Alt+O**.
 5. Binds **Super+Alt+O** to center mode.
-6. Copies the retrowave stills used in notifications.
+6. Enables the bar widget **to the right of the clock**.
+7. Copies the retrowave stills used in notifications.
+
+If `omarchy refresh hyprland` wipes those blocks, run `./install.sh` again.
 
 ## Usage
 
 | Key | Action |
 | --- | --- |
-| `Super+Shift+O` | Toggle **fit** masonry on the active workspace (treemap that fills the monitor) |
-| `Super+Alt+O` | Toggle **center** mode: focused window as a locked square in the middle, others as squares around it |
-| `Super+Shift+K` | Pin / unpin the focused window (magenta border). Center mode pins the hub automatically. |
-| `Super+Shift+←↑↓→` | Swap the focused tile with its neighbor (skips the locked hub in center mode) |
+| `Super+Shift+O` | Toggle **Masonry** (fit) on the active workspace |
+| `Super+Alt+O` | Toggle **Center** mode (same workspace). Second press turns Omansory off |
+| `Super+Shift+K` | Pin / unpin the focused window (magenta border). Center pins the hub automatically |
+| `Super+Shift+←↑↓→` | Swap the focused tile with its neighbor (skips the locked hub in center) |
 | `Super+-` / `Super++` | Grow / shrink the focused share (same keys as Omarchy) |
 | `Super+Shift+-` / `Super+Shift++` | Shorten / grow the focused window vertically |
-| Bar glyph `󰕰` | Next to the workspace pills; click toggles fit masonry. Magenta + ids when on. |
+| Bar glyph | Right of the clock. **2×2 squares** = Masonry Mode; **inner square + frame** = Central Mode. Click toggles fit |
 | `Super+Shift+Alt+O` | Obsidian (after install) |
-| `Super+L` | Still Omarchy’s dwindle ↔ scrolling toggle (replaces Omansory on that workspace if you use it) |
+| `Super+L` | Omarchy dwindle ↔ scrolling (replaces Omansory on that workspace) |
 
-A compact retrowave **ON / OFF** wall switch flashes under the bar on toggle.
+A compact retrowave wall switch flashes under the bar: **MASONRY ON / OFF** or **CENTER ON / CENTER OFF**.
 
 ### Fit mode (`Super+Shift+O`)
 
-Default pack. Browsers and editors get more area than terminals. The layout fills the work area with mixed rectangles, not full-width single-app bars.
+Squarified treemap that **fills the work area**. Browsers and editors get more space than terminals. No full-width single-app bars, no overlapping tiles, leftover holes are absorbed by a neighbor. Inner `gaps_in` is 0 while Omansory is on.
 
 ### Center mode (`Super+Alt+O`)
 
-The **focused** window moves to a square in the middle of the workspace and is **locked** (same pin as `Super+Shift+K`, magenta border). Remaining windows become squares around that hub. Super+Shift+arrows reorders the satellites; the hub stays put. Press `Super+Alt+O` again to leave Omansory on that workspace. Pins survive toggle in `~/.local/state/omansory/locks/<workspace-id>.jsonl`.
+The **focused** window becomes the hub, sized like **scrolling with one app** on this machine (`layout.single_window_aspect_ratio` when that Omarchy toggle is on, otherwise `scrolling.column_width`). It is locked (magenta border). Other windows fill the leftover ring. Super+Shift+arrows reorder satellites; the hub stays. Press again to turn Center (and Omansory) **off**. Use Super+Shift+O to switch to fit without leaving Omansory.
 
 ### CLI
 
 ```sh
 omansory toggle          # fit on/off
-omansory center          # center mode on/off
+omansory center          # center on/off (Super+Alt+O)
 omansory on
 omansory off
-omansory status
+omansory status [--json]
 omansory mode fit|center|columns
 omansory cols 3          # 1–6, or + / -
 omansory lock            # Super+Shift+K
 omansory swap left       # or right / up / down
 omansory resize h -100
 omansory resize v 100
+omansory reset           # recompute packing
+omansory refresh         # reload the bar plugin; do not restart the shell
+omansory install
+omansory uninstall
 ```
 
 Floating / pinned windows (including Omarchy `Super+O` pop-out) are left alone.
+
+Reload the bar with `omansory refresh` or `omarchy-shell shell rescanPlugins`. **Do not** `omarchy restart shell` or force a renderer reload to pick up plugin tweaks — that leaves unpainted strips.
 
 ## Uninstall
 
@@ -82,7 +91,7 @@ Floating / pinned windows (including Omarchy `Super+O` pop-out) are left alone.
 omansory uninstall
 ```
 
-Removes the marked config blocks and symlinks. The git clone stays.
+Removes the marked config blocks and symlinks. The git clone stays. Inner gaps return to Omarchy’s default on that workspace.
 
 ## Requirements
 

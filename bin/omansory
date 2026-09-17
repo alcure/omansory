@@ -47,13 +47,15 @@ Uso: omansory <comando>
   cols <n|+|->    Força o modo de colunas rígidas
   mode fit|columns|center  Encaixe, colunas ou centro
   lock            Trava/destrava a janela focada neste workspace
+  reset           Recalcula o packing do workspace
+  refresh         Relê o plugin da barra (sem reiniciar o shell)
   swap <dir>      Troca com a vizinha (left/right/up/down)
   resize h|v <px> Redimensiona a janela (atalhos Super± do Omarchy)
 
 Omansory substitui o atalho padrão do Obsidian (Super+Shift+O).
 Na instalação, o Obsidian é remapado para Super+Shift+Alt+O.
 Super+Shift+K trava a fatia da janela (borda magenta).
-Super+Alt+O liga o modo centro.
+Super+Alt+O liga/desliga o modo centro.
 EOF
   else
     cat <<'EOF'
@@ -69,13 +71,15 @@ Usage: omansory <command>
   cols <n|+|->    Switch to rigid columns
   mode fit|columns|center  Interlock, columns, or center
   lock            Pin/unpin the focused window on this workspace
+  reset           Recalculate packing on this workspace
+  refresh         Reload the bar plugin (does not restart the shell)
   swap <dir>      Swap with the neighbor (left/right/up/down)
   resize h|v <px> Resize the focused window (Omarchy Super± keys)
 
 Omansory replaces the stock Obsidian shortcut (Super+Shift+O).
 Install remaps Obsidian to Super+Shift+Alt+O.
 Super+Shift+K pins that window's slice (magenta border).
-Super+Alt+O turns on center mode.
+Super+Alt+O toggles center mode.
 EOF
   fi
 }
@@ -148,8 +152,8 @@ set_animations() {
 
 set_damage_tracking() {
   local value="$1"
-  hypr_keyword debug:damage_tracking "$value" \
-    || hypr_eval "hl.config({ debug = { damage_tracking = ${value} } })"
+  hypr_eval "hl.config({ debug = { damage_tracking = ${value} } })" \
+    || hypr_keyword debug:damage_tracking "$value"
 }
 
 unfullscreen_workspace() {
@@ -173,7 +177,7 @@ reload_renderer() {
 # recreates the swapchain mid-place and leaves unpainted strips. Flash the
 # switch only after the new boxes have been painted.
 settle_layout_paint() {
-  local prev_anim="$1" prev_damage="$2" token="$3" mode="$4" workspace="$5"
+  local prev_anim="$1" prev_damage="$2" token="$3" mode="$4" workspace="$5" pack="${6:-}"
   (
     sleep 0.08
     [[ -f "$STATE_DIR/anim.token" ]] || exit 0
@@ -184,28 +188,34 @@ settle_layout_paint() {
     [[ "$(<"$STATE_DIR/anim.token")" == "$token" ]] || exit 0
     set_damage_tracking "$prev_damage"
     set_animations "$prev_anim"
-    flash_osd "$mode" "$workspace"
+    flash_osd "$mode" "$workspace" "$pack"
   ) >/dev/null 2>&1 &
 }
 
 flash_osd() {
-  local mode="$1" workspace="$2"
+  local mode="$1" workspace="$2" pack="${3:-}"
   local payload
-  payload=$(jq -nc --arg mode "$mode" --argjson workspace "${workspace:-0}" '{mode:$mode, workspace:$workspace}')
+  payload=$(jq -nc --arg mode "$mode" --arg pack "$pack" --argjson workspace "${workspace:-0}" \
+    '{mode:$mode, pack:$pack, workspace:$workspace}')
   omarchy-shell shell summon omansory "$payload" >/dev/null 2>&1 || true
 }
 
 write_workspace_layout() {
   local workspace="$1" layout="$2"
+  local rule
   mkdir -p "$OMARCHY_LAYOUTS"
-  printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$workspace" "$layout" \
-    >"$OMARCHY_LAYOUTS/${workspace}.lua"
-  hyprctl eval "hl.workspace_rule({ workspace = \"$workspace\", layout = \"$layout\" })" >/dev/null 2>&1 \
+  if [[ "$layout" == *omansory* ]]; then
+    rule=$(printf 'hl.workspace_rule({ workspace = "%s", layout = "%s", gaps_in = 0 })' "$workspace" "$layout")
+  else
+    rule=$(printf 'hl.workspace_rule({ workspace = "%s", layout = "%s", gaps_in = 5 })' "$workspace" "$layout")
+  fi
+  printf '%s\n' "$rule" >"$OMARCHY_LAYOUTS/${workspace}.lua"
+  hyprctl eval "$rule" >/dev/null 2>&1 \
     || hyprctl keyword workspace "$workspace, layout:$layout"
 }
 
 set_layout() {
-  local workspace="$1" layout="$2" mode="$3"
+  local workspace="$1" layout="$2" mode="$3" pack="${4:-}"
   local prev_anim prev_damage token
   mkdir -p "$STATE_DIR"
   prev_anim="$(animations_enabled)"
@@ -222,9 +232,13 @@ set_layout() {
 
   if [[ "$mode" == on ]]; then
     hyprctl dispatch "hl.dsp.layout(\"reset\")" >/dev/null 2>&1 || true
+    if [[ "$pack" == center ]]; then
+      hyprctl dispatch "hl.dsp.layout(\"mode center\")" >/dev/null 2>&1 || true
+      hyprctl dispatch "hl.dsp.layout(\"hub\")" >/dev/null 2>&1 || true
+    fi
   fi
 
-  settle_layout_paint "$prev_anim" "$prev_damage" "$token" "$mode" "$workspace"
+  settle_layout_paint "$prev_anim" "$prev_damage" "$token" "$mode" "$workspace" "$pack"
 }
 
 cmd_status() {
@@ -236,14 +250,20 @@ cmd_status() {
   layout="$(active_layout)"
   ids="$(hyprctl workspaces -j | jq -c '[.[] | select((.tiledLayout // "") | test("omansory")) | .id]')"
   if ((json)); then
-    jq -nc --argjson ws "${workspace:-0}" --arg layout "$layout" --argjson ids "${ids:-[]}" \
-      '{workspace:$ws, layout:$layout, active:(($layout|tostring)|test("omansory")), workspaces:$ids}'
+    local kind=""
+    if is_omansory "$layout"; then
+      kind="$(workspace_kind "$workspace")"
+      [[ -n "$kind" ]] || kind="fit"
+    fi
+    jq -nc --argjson ws "${workspace:-0}" --arg layout "$layout" --arg kind "$kind" --argjson ids "${ids:-[]}" \
+      '{workspace:$ws, layout:$layout, kind:$kind, active:(($layout|tostring)|test("omansory")), workspaces:$ids}'
     return 0
   fi
   if pt; then
     echo "workspace ${workspace}: ${layout}"
     if is_omansory "$layout"; then
       echo "Omansory: ligado"
+      echo "mode: $(workspace_kind "$workspace")"
     else
       echo "Omansory: desligado"
     fi
@@ -252,6 +272,7 @@ cmd_status() {
     echo "workspace ${workspace}: ${layout}"
     if is_omansory "$layout"; then
       echo "Omansory: on"
+      echo "mode: $(workspace_kind "$workspace")"
     else
       echo "Omansory: off"
     fi
@@ -276,10 +297,11 @@ cmd_on() {
 }
 
 cmd_off() {
-  local workspace layout prev
+  local workspace layout prev pack
   workspace="$(active_workspace)"
   [[ "$workspace" =~ ^-?[0-9]+$ ]] || die "no active workspace"
   layout="$(active_layout)"
+  pack="$(workspace_kind "$workspace")"
   prev="dwindle"
   if [[ -f "$STATE_DIR/${workspace}.prev" ]]; then
     prev="$(<"$STATE_DIR/${workspace}.prev")"
@@ -289,21 +311,28 @@ cmd_off() {
     prev="dwindle"
   fi
   rm -f "$STATE_DIR/${workspace}.kind"
-  set_layout "$workspace" "$prev" off
+  set_layout "$workspace" "$prev" off "$pack"
 }
 
 cmd_toggle() {
-  local layout workspace
+  local layout workspace kind
   layout="$(active_layout)"
   workspace="$(active_workspace)"
-  if is_omansory "$layout"; then
+  kind="$(workspace_kind "$workspace")"
+  if is_omansory "$layout" && [[ "$kind" == fit || "$kind" == "" || "$kind" == columns ]]; then
     cmd_off
-  else
+    return 0
+  fi
+  if is_omansory "$layout" && [[ "$kind" == center ]]; then
     mkdir -p "$STATE_DIR"
     printf 'fit\n' >"$STATE_DIR/${workspace}.kind"
-    cmd_on
-    hyprctl dispatch "hl.dsp.layout(\"mode fit\")" >/dev/null 2>&1 || true
+    hyprctl dispatch "hl.dsp.layout(\"mode fit\")" >/dev/null
+    return 0
   fi
+  mkdir -p "$STATE_DIR"
+  printf 'fit\n' >"$STATE_DIR/${workspace}.kind"
+  cmd_on
+  hyprctl dispatch "hl.dsp.layout(\"mode fit\")" >/dev/null 2>&1 || true
 }
 
 workspace_kind() {
@@ -312,26 +341,34 @@ workspace_kind() {
 }
 
 cmd_toggle_center() {
-  local workspace layout
+  local workspace layout prev kind
   workspace="$(active_workspace)"
   [[ "$workspace" =~ ^-?[0-9]+$ ]] || die "no active workspace"
   layout="$(active_layout)"
-  if is_omansory "$layout" && [[ "$(workspace_kind "$workspace")" == center ]]; then
+  kind="$(workspace_kind "$workspace")"
+
+  if is_omansory "$layout" && [[ "$kind" == center ]]; then
     cmd_off
     return 0
   fi
+
   mkdir -p "$STATE_DIR"
-  if ! is_omansory "$layout"; then
-    cmd_on
-    local i
-    for i in 1 2 3 4 5 6 7 8; do
-      is_omansory "$(active_layout)" && break
-      sleep 0.04
-    done
-  fi
   printf 'center\n' >"$STATE_DIR/${workspace}.kind"
-  hyprctl dispatch "hl.dsp.layout(\"mode center\")" >/dev/null
-  hyprctl dispatch "hl.dsp.layout(\"hub\")" >/dev/null
+
+  if is_omansory "$layout"; then
+    hyprctl dispatch "hl.dsp.layout(\"mode center\")" >/dev/null
+    hyprctl dispatch "hl.dsp.layout(\"hub\")" >/dev/null
+    flash_osd on "$workspace" center
+    return 0
+  fi
+
+  prev="${layout:-dwindle}"
+  [[ -n "$prev" && "$prev" != "null" ]] || prev="dwindle"
+  if is_omansory "$prev"; then
+    prev="dwindle"
+  fi
+  printf '%s\n' "$prev" >"$STATE_DIR/${workspace}.prev"
+  set_layout "$workspace" "$LAYOUT_NAME" on center
 }
 
 cmd_mode() {
@@ -440,7 +477,9 @@ o.bind("SUPER + SHIFT + UP", "Swap window up", "${plugin_bin} swap up", { repeat
 hl.unbind("SUPER + SHIFT + DOWN")
 o.bind("SUPER + SHIFT + DOWN", "Swap window down", "${plugin_bin} swap down", { repeating = true })
 hl.unbind("${CENTER_BIND}")
-o.bind("${CENTER_BIND}", "Toggle Omansory center mode on workspace", "${plugin_bin} center")
+o.bind("${CENTER_BIND}", "Toggle Omansory center mode on workspace", "${plugin_bin} apply-center")
+hl.unbind("SUPER + ALT + code:24")
+o.bind("SUPER + ALT + code:24", "Toggle Omansory center mode on workspace", "${plugin_bin} apply-center")
 ${END}
 EOF
 }
@@ -524,8 +563,8 @@ install_shell_plugin() {
   local attempt
   for attempt in 1 2 3 4 5 6 7 8 9 10; do
     if omarchy-plugin-list --json 2>/dev/null | jq -e --arg id omansory 'any(.[]; .id == $id)' >/dev/null; then
-      omarchy plugin enable omansory --section left --after omarchy.workspaces >/dev/null 2>&1 \
-        || omarchy plugin enable omansory --section left >/dev/null 2>&1 \
+      omarchy plugin enable omansory --section center --after omarchy.clock >/dev/null 2>&1 \
+        || omarchy plugin enable omansory --section center >/dev/null 2>&1 \
         || true
       return 0
     fi
@@ -545,17 +584,29 @@ cmd_install() {
   hyprctl reload >/dev/null 2>&1 || true
   if pt; then
     echo "Omansory instalado."
-    echo "Atalho: Super+Shift+O (masonry fit). Super+Alt+O (modo centro)."
+    echo "Atalho: Super+Shift+O (masonry fit). Super+Alt+O (modo centro on/off)."
     echo "Trava: Super+Shift+K (borda magenta, por workspace)."
     echo "Obsidian: Super+Shift+Alt+O."
-    echo "O ícone fica ao lado dos workspaces; um cartão retrowave aparece no toggle."
+    echo "O ícone fica à direita do relógio, no centro da barra; um cartão retrowave aparece no toggle."
   else
     echo "Omansory installed."
-    echo "Shortcut: Super+Shift+O (fit masonry). Super+Alt+O (center mode)."
+    echo "Shortcut: Super+Shift+O (fit masonry). Super+Alt+O (center on/off)."
     echo "Lock: Super+Shift+K (magenta border, per workspace)."
     echo "Obsidian: Super+Shift+Alt+O."
-    echo "Bar glyph sits next to the workspaces; a retrowave card flashes on toggle."
+    echo "Bar glyph sits to the right of the clock; a retrowave card flashes on toggle."
   fi
+}
+
+cmd_refresh() {
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  is_omansory "$(active_layout)" || return 0
+  local prev_damage
+  prev_damage="$(damage_tracking)"
+  [[ "$prev_damage" =~ ^[0-2]$ ]] || prev_damage=2
+  set_damage_tracking 0
+  hyprctl dispatch "hl.dsp.layout(\"reset\")" >/dev/null 2>&1 || true
+  sleep 0.22
+  set_damage_tracking "$prev_damage"
 }
 
 cmd_uninstall() {
@@ -573,10 +624,11 @@ cmd_uninstall() {
 cmd="${1:-}"
 case "$cmd" in
   toggle) cmd_toggle ;;
-  center | hub) cmd_toggle_center ;;
+  center | hub | apply-center) cmd_toggle_center ;;
   on | enable) cmd_on ;;
   off | disable) cmd_off ;;
   status) shift; cmd_status "$@" ;;
+  refresh) cmd_refresh ;;
   install) cmd_install ;;
   uninstall | remove) cmd_uninstall ;;
   mode) shift; cmd_mode "${1:-fit}" ;;

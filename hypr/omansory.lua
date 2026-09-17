@@ -21,6 +21,55 @@ local function clamp(value, lo, hi)
   return math.max(lo, math.min(hi, value))
 end
 
+local function config_num(key, fallback)
+  local ok, value = pcall(hl.get_config, key)
+  if not ok then
+    return fallback
+  end
+  if type(value) == "number" then
+    return value
+  end
+  if type(value) == "table" then
+    return tonumber(value.float or value[1] or value.x) or fallback
+  end
+  return tonumber(value) or fallback
+end
+
+local function config_vec2(key)
+  local ok, value = pcall(hl.get_config, key)
+  if not ok or type(value) ~= "table" then
+    return nil, nil
+  end
+  local x = tonumber(value.x or value[1])
+  local y = tonumber(value.y or value[2])
+  return x, y
+end
+
+-- Same box Hyprland uses for one tiled window: square aspect if that
+-- Omarchy toggle is on, otherwise scrolling's column_width at full height.
+local function scrolling_single_box(area)
+  local rw, rh = config_vec2("layout.single_window_aspect_ratio")
+  if rw and rh and rw > 0 and rh > 0 then
+    local scale = math.min(area.w / rw, area.h / rh)
+    local hub_w = math.max(1, math.floor(rw * scale + 0.5))
+    local hub_h = math.max(1, math.floor(rh * scale + 0.5))
+    return {
+      x = area.x + (area.w - hub_w) / 2,
+      y = area.y + (area.h - hub_h) / 2,
+      w = hub_w,
+      h = hub_h,
+    }
+  end
+  local col = clamp(config_num("scrolling.column_width", 0.49), 0.1, 1.0)
+  local hub_w = math.max(1, math.floor(area.w * col + 0.5))
+  return {
+    x = area.x + (area.w - hub_w) / 2,
+    y = area.y,
+    w = hub_w,
+    h = area.h,
+  }
+end
+
 local function target_id(target)
   local window = target.window
   if window and window.stable_id then
@@ -318,7 +367,14 @@ load_locks = function(ws_id)
     local rw = tonumber(line:match('"rw":([%-%d%.eE+]+)'))
     local rh = tonumber(line:match('"rh":([%-%d%.eE+]+)'))
     if id and rx and ry and rw and rh then
-      locks[id] = { class = class, rx = rx, ry = ry, rw = rw, rh = rh }
+      locks[id] = {
+        class = class,
+        rx = rx,
+        ry = ry,
+        rw = rw,
+        rh = rh,
+        hub = line:find('"hub":true', 1, true) ~= nil,
+      }
     end
   end
   file:close()
@@ -333,14 +389,16 @@ local function save_locks(ws_id, ws)
   end
   for id, lock in pairs(ws.locks or {}) do
     local class = tostring(lock.class or ""):gsub('"', "")
+    local hub = lock.hub and ',"hub":true' or ""
     file:write(string.format(
-      '{"id":"%s","class":"%s","rx":%.6f,"ry":%.6f,"rw":%.6f,"rh":%.6f}\n',
+      '{"id":"%s","class":"%s","rx":%.6f,"ry":%.6f,"rw":%.6f,"rh":%.6f%s}\n',
       id,
       class,
       lock.rx,
       lock.ry,
       lock.rw,
-      lock.rh
+      lock.rh,
+      hub
     ))
   end
   file:close()
@@ -360,7 +418,19 @@ local function tag_lock(target, on)
   end)
 end
 
+local function snap_rect(rect)
+  local x = math.floor(rect.x)
+  local y = math.floor(rect.y)
+  local x2 = math.floor(rect.x + math.max(0, rect.w))
+  local y2 = math.floor(rect.y + math.max(0, rect.h))
+  return { x = x, y = y, w = math.max(0, x2 - x), h = math.max(0, y2 - y) }
+end
+
 local function record_place(ws, item, rect)
+  rect = snap_rect(rect)
+  if rect.w < 1 or rect.h < 1 then
+    return
+  end
   item.target:place(box(rect.x, rect.y, rect.w, rect.h))
   ws.last_box[item.id] = { x = rect.x, y = rect.y, w = rect.w, h = rect.h }
 end
@@ -382,6 +452,55 @@ end
 
 local function overlap_1d(a1, a2, b1, b2)
   return math.min(a2, b2) - math.max(a1, b1)
+end
+
+local function interiors_overlap(a, b)
+  if not a or not b then
+    return false
+  end
+  return overlap_1d(a.x, a.x + a.w, b.x, b.x + b.w) > 0 and overlap_1d(a.y, a.y + a.h, b.y, b.y + b.h) > 0
+end
+
+local function clip_away(a, b)
+  local ox = overlap_1d(a.x, a.x + a.w, b.x, b.x + b.w)
+  local oy = overlap_1d(a.y, a.y + a.h, b.y, b.y + b.h)
+  if ox <= 0 or oy <= 0 then
+    return a
+  end
+  local function try(axis)
+    if axis == "x" then
+      if (a.x + a.w / 2) <= (b.x + b.w / 2) then
+        local w = b.x - a.x
+        if w < 1 then
+          return nil
+        end
+        return { x = a.x, y = a.y, w = w, h = a.h }
+      end
+      local x = b.x + b.w
+      local w = a.x + a.w - x
+      if w < 1 then
+        return nil
+      end
+      return { x = x, y = a.y, w = w, h = a.h }
+    end
+    if (a.y + a.h / 2) <= (b.y + b.h / 2) then
+      local h = b.y - a.y
+      if h < 1 then
+        return nil
+      end
+      return { x = a.x, y = a.y, w = a.w, h = h }
+    end
+    local y = b.y + b.h
+    local h = a.y + a.h - y
+    if h < 1 then
+      return nil
+    end
+    return { x = a.x, y = y, w = a.w, h = h }
+  end
+  if ox <= oy then
+    return try("x") or try("y")
+  end
+  return try("y") or try("x")
 end
 
 local function neighbor_id(ws, id, dir, exclude)
@@ -450,7 +569,11 @@ local function worst_ratio(items, first, last, side, rem_area, rem_weight)
 end
 
 local function pack_fill(ws, items, rect)
-  if #items == 0 or rect.w < 1 or rect.h < 1 then
+  if #items == 0 then
+    return
+  end
+  rect = snap_rect(rect)
+  if rect.w < 1 or rect.h < 1 then
     return
   end
   if #items == 1 then
@@ -460,9 +583,27 @@ local function pack_fill(ws, items, rect)
 
   local i = 1
   while i <= #items do
-    if rect.w < MIN_W or rect.h < MIN_H then
-      for j = i, #items do
-        record_place(ws, items[j], rect)
+    local left = #items - i + 1
+    if rect.w < 1 or rect.h < 1 then
+      return
+    end
+    if left > 1 and (rect.w < math.max(8, MIN_W / 2) or rect.h < math.max(8, MIN_H / 2)) then
+      if rect.w >= rect.h then
+        local tw = rect.w / left
+        local x = rect.x
+        for j = i, #items do
+          local w = (j == #items) and (rect.x + rect.w - x) or tw
+          record_place(ws, items[j], { x = x, y = rect.y, w = w, h = rect.h })
+          x = x + w
+        end
+      else
+        local th = rect.h / left
+        local y = rect.y
+        for j = i, #items do
+          local h = (j == #items) and (rect.y + rect.h - y) or th
+          record_place(ws, items[j], { x = rect.x, y = y, w = rect.w, h = h })
+          y = y + h
+        end
       end
       return
     end
@@ -471,7 +612,6 @@ local function pack_fill(ws, items, rect)
     local rem_area = rect.w * rect.h
     local vertical = rect.w >= rect.h
     if (not vertical) and (#items - i) >= 1 and rect.w >= MIN_W * 2 then
-      -- Never lay a leftover group as one full-width bar when another tile remains.
       vertical = true
     end
     local side = vertical and rect.h or rect.w
@@ -494,7 +634,7 @@ local function pack_fill(ws, items, rect)
 
     local row_w = sum_weight(items, i, last)
     if vertical then
-      local tw = clamp(rect.w * (row_w / rem_weight), MIN_W, math.max(MIN_W, rect.w - (i < #items and last < #items and MIN_W or 0)))
+      local tw = clamp(rect.w * (row_w / rem_weight), 1, math.max(1, rect.w - (last < #items and 1 or 0)))
       if last == #items then
         tw = rect.w
       end
@@ -507,9 +647,9 @@ local function pack_fill(ws, items, rect)
         record_place(ws, items[j], { x = rect.x, y = y, w = tw, h = h })
         y = y + h
       end
-      rect = { x = rect.x + tw, y = rect.y, w = rect.w - tw, h = rect.h }
+      rect = snap_rect({ x = rect.x + tw, y = rect.y, w = rect.w - tw, h = rect.h })
     else
-      local th = clamp(rect.h * (row_w / rem_weight), MIN_H, math.max(MIN_H, rect.h - (last < #items and MIN_H or 0)))
+      local th = clamp(rect.h * (row_w / rem_weight), 1, math.max(1, rect.h - (last < #items and 1 or 0)))
       if last == #items then
         th = rect.h
       end
@@ -522,7 +662,7 @@ local function pack_fill(ws, items, rect)
         record_place(ws, items[j], { x = x, y = rect.y, w = w, h = th })
         x = x + w
       end
-      rect = { x = rect.x, y = rect.y + th, w = rect.w, h = rect.h - th }
+      rect = snap_rect({ x = rect.x, y = rect.y + th, w = rect.w, h = rect.h - th })
     end
     i = last + 1
   end
@@ -554,59 +694,264 @@ local function subtract_rect(free, used)
   end
   local cleaned = {}
   for _, rect in ipairs(out) do
-    if rect.w >= MIN_W and rect.h >= MIN_H then
-      table.insert(cleaned, rect)
+    if rect.w >= 1 and rect.h >= 1 then
+      table.insert(cleaned, snap_rect(rect))
     end
   end
   return cleaned
 end
 
-local function pack_into_free(ws, items, rects)
-  if #items == 0 then
+local function region_area(rect)
+  return math.max(0, rect.w) * math.max(0, rect.h)
+end
+
+local function assign_by_area(items, regions)
+  local usable = {}
+  for _, region in ipairs(regions) do
+    local a = region_area(region.rect)
+    if a >= 1 then
+      region.area = a
+      region.items = {}
+      table.insert(usable, region)
+    end
+  end
+  if #usable == 0 or #items == 0 then
     return
   end
-  if #rects == 0 then
-    return
-  end
-  table.sort(rects, function(a, b)
-    return (a.w * a.h) > (b.w * b.h)
+  table.sort(usable, function(a, b)
+    return a.area > b.area
   end)
-  if #rects == 1 or #items == 1 then
-    pack_fill(ws, items, rects[1])
-    return
+  local idx = 1
+  for _, region in ipairs(usable) do
+    if items[idx] then
+      table.insert(region.items, items[idx])
+      idx = idx + 1
+    end
   end
-  local total_a = 0
-  for _, rect in ipairs(rects) do
-    total_a = total_a + rect.w * rect.h
+  while items[idx] do
+    local best, best_score = usable[1], -1
+    for _, region in ipairs(usable) do
+      local score = region.area / math.max(1, #region.items)
+      if score > best_score then
+        best, best_score = region, score
+      end
+    end
+    table.insert(best.items, items[idx])
+    idx = idx + 1
   end
-  local total_w = sum_weight(items, 1, #items)
-  local share = (rects[1].w * rects[1].h) / total_a
-  local acc, last = 0, 0
-  for i, item in ipairs(items) do
-    acc = acc + item.weight
-    last = i
-    local leftover_items = #items - i
-    if leftover_items >= 1 and acc >= share * total_w then
+end
+
+local pack_into_free
+
+local function tiles_overlap(ws, items)
+  for i = 1, #items do
+    local a = ws.last_box[items[i].id]
+    for j = i + 1, #items do
+      local b = ws.last_box[items[j].id]
+      if interiors_overlap(a, b) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function resolve_overlaps(ws, items, area, keep)
+  keep = keep or {}
+  local function reclip()
+    local changed = false
+    for i = 1, #items do
+      local a = ws.last_box[items[i].id]
+      if a then
+        for j = 1, #items do
+          if i ~= j then
+            local b = ws.last_box[items[j].id]
+            if b and interiors_overlap(a, b) then
+              local ida, idb = items[i].id, items[j].id
+              local shrink = items[i]
+              local stay = b
+              if keep[ida] and not keep[idb] then
+                shrink = items[j]
+                stay = a
+              elseif keep[idb] and not keep[ida] then
+                shrink = items[i]
+                stay = b
+              elseif keep[ida] and keep[idb] then
+                if (a.w * a.h) > (b.w * b.h) then
+                  shrink = items[j]
+                  stay = a
+                else
+                  shrink = items[i]
+                  stay = b
+                end
+              elseif (a.w * a.h) > (b.w * b.h) then
+                shrink = items[j]
+                stay = a
+              end
+              local src = ws.last_box[shrink.id]
+              local clipped = clip_away(src, stay)
+              if clipped then
+                record_place(ws, shrink, clipped)
+                changed = true
+                if shrink.id == items[i].id then
+                  a = clipped
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    return changed
+  end
+  for _ = 1, 24 do
+    if not reclip() then
       break
     end
   end
-  if last >= #items then
-    last = math.max(1, #items - 1)
+  if not tiles_overlap(ws, items) then
+    return
   end
-  local first, rest = {}, {}
-  for i, item in ipairs(items) do
-    if i <= last then
-      table.insert(first, item)
+  local reserved, movable = {}, {}
+  local holes = { { x = area.x, y = area.y, w = area.w, h = area.h } }
+  for _, item in ipairs(items) do
+    if keep[item.id] and ws.last_box[item.id] then
+      table.insert(reserved, item)
+      holes = subtract_rect(holes, ws.last_box[item.id])
     else
-      table.insert(rest, item)
+      table.insert(movable, item)
     end
   end
-  pack_fill(ws, first, rects[1])
-  local remain = {}
-  for i = 2, #rects do
-    table.insert(remain, rects[i])
+  if #movable > 0 then
+    if #holes == 0 then
+      pack_fill(ws, items, { x = area.x, y = area.y, w = area.w, h = area.h })
+    else
+      pack_into_free(ws, movable, holes)
+    end
   end
-  pack_into_free(ws, rest, remain)
+end
+
+pack_into_free = function(ws, items, rects)
+  if #items == 0 or #rects == 0 then
+    return
+  end
+  local regions = {}
+  for _, rect in ipairs(rects) do
+    table.insert(regions, { rect = snap_rect(rect) })
+  end
+  assign_by_area(items, regions)
+  local placed = {}
+  for _, region in ipairs(regions) do
+    if region.items and #region.items > 0 then
+      pack_fill(ws, region.items, region.rect)
+      for _, item in ipairs(region.items) do
+        placed[item.id] = true
+      end
+    end
+  end
+  local leftover = {}
+  for _, item in ipairs(items) do
+    if not placed[item.id] then
+      table.insert(leftover, item)
+    end
+  end
+  if #leftover > 0 then
+    table.sort(rects, function(a, b)
+      return (a.w * a.h) > (b.w * b.h)
+    end)
+    pack_fill(ws, leftover, rects[1])
+  end
+end
+
+local function overlaps_any(rect, ws, items, skip)
+  for _, item in ipairs(items) do
+    if item.id ~= skip then
+      local other = ws.last_box[item.id]
+      if interiors_overlap(rect, other) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function clamp_rect_area(r, area)
+  local x = math.max(area.x, r.x)
+  local y = math.max(area.y, r.y)
+  local x2 = math.min(area.x + area.w, r.x + r.w)
+  local y2 = math.min(area.y + area.h, r.y + r.h)
+  return { x = x, y = y, w = math.max(0, x2 - x), h = math.max(0, y2 - y) }
+end
+
+-- Absorb leftover wallpaper rectangles into the neighbor with the longest shared edge.
+local function fill_gaps(ws, items, area)
+  if #items == 0 then
+    return
+  end
+  for _ = 1, 16 do
+    local holes = { { x = area.x, y = area.y, w = area.w, h = area.h } }
+    for _, item in ipairs(items) do
+      local boxr = ws.last_box[item.id]
+      if boxr and boxr.w >= 1 and boxr.h >= 1 then
+        holes = subtract_rect(holes, boxr)
+      end
+    end
+    if #holes == 0 then
+      return
+    end
+    table.sort(holes, function(a, b)
+      return (a.w * a.h) > (b.w * b.h)
+    end)
+    local grew = false
+    for _, hole in ipairs(holes) do
+      local best, best_score, best_rect = nil, 0, nil
+      for _, item in ipairs(items) do
+        local t = ws.last_box[item.id]
+        if t then
+          local cand, score = nil, 0
+          if math.abs((t.x + t.w) - hole.x) <= 1 then
+            local ov = overlap_1d(t.y, t.y + t.h, hole.y, hole.y + hole.h)
+            if ov > 0 then
+              cand = { x = t.x, y = t.y, w = (hole.x + hole.w) - t.x, h = t.h }
+              score = ov * hole.w
+            end
+          elseif math.abs(t.x - (hole.x + hole.w)) <= 1 then
+            local ov = overlap_1d(t.y, t.y + t.h, hole.y, hole.y + hole.h)
+            if ov > 0 then
+              cand = { x = hole.x, y = t.y, w = t.x + t.w - hole.x, h = t.h }
+              score = ov * hole.w
+            end
+          elseif math.abs((t.y + t.h) - hole.y) <= 1 then
+            local ov = overlap_1d(t.x, t.x + t.w, hole.x, hole.x + hole.w)
+            if ov > 0 then
+              cand = { x = t.x, y = t.y, w = t.w, h = (hole.y + hole.h) - t.y }
+              score = ov * hole.h
+            end
+          elseif math.abs(t.y - (hole.y + hole.h)) <= 1 then
+            local ov = overlap_1d(t.x, t.x + t.w, hole.x, hole.x + hole.w)
+            if ov > 0 then
+              cand = { x = t.x, y = hole.y, w = t.w, h = t.y + t.h - hole.y }
+              score = ov * hole.h
+            end
+          end
+          if cand then
+            cand = clamp_rect_area(cand, area)
+            if cand.w >= 1 and cand.h >= 1 and score > best_score and not overlaps_any(cand, ws, items, item.id) then
+              best, best_score, best_rect = item, score, cand
+            end
+          end
+        end
+      end
+      if best then
+        record_place(ws, best, best_rect)
+        grew = true
+        break
+      end
+    end
+    if not grew then
+      return
+    end
+  end
 end
 
 local function lock_box(area, lock)
@@ -629,15 +974,16 @@ end
 
 local function match_lock(ws, item, present, class_n)
   ws.locks = ws.locks or {}
-  if ws.locks[item.id] then
-    return ws.locks[item.id]
+  local mine = ws.locks[item.id]
+  if mine and not mine.hub then
+    return mine
   end
   if (class_n[item.class] or 0) ~= 1 or item.class == "" then
     return
   end
   local orphan
   for id, lock in pairs(ws.locks) do
-    if not present[id] and lock.class == item.class then
+    if not present[id] and not lock.hub and lock.class == item.class then
       if orphan then
         return
       end
@@ -659,6 +1005,16 @@ local function fractions(area, rect)
     rw = rect.w / math.max(1, area.w),
     rh = rect.h / math.max(1, area.h),
   }
+end
+
+local function area_changed(prev, area)
+  if not prev or not area then
+    return true
+  end
+  return math.abs((prev.x or 0) - area.x) > 1
+    or math.abs((prev.y or 0) - area.y) > 1
+    or math.abs((prev.w or 0) - area.w) > 2
+    or math.abs((prev.h or 0) - area.h) > 2
 end
 
 local function place_fit(ctx)
@@ -696,16 +1052,21 @@ local function place_fit(ctx)
 
   if ws.arranged then
     local ready = true
+    if area_changed(ws.pack_area, area) then
+      ready = false
+    end
     for _, item in ipairs(items) do
       if not ws.last_box[item.id] then
         ready = false
         break
       end
     end
-    if ready then
+    if ready and not tiles_overlap(ws, items) then
       for _, item in ipairs(items) do
         record_place(ws, item, remap_box(ws.last_box[item.id], ws.pack_area, area))
       end
+      resolve_overlaps(ws, items, area)
+      fill_gaps(ws, items, area)
       ws.pack_area = { x = area.x, y = area.y, w = area.w, h = area.h }
       return
     end
@@ -730,24 +1091,61 @@ local function place_fit(ctx)
 
   if #locked == 0 then
     pack_fill(ws, items, { x = area.x, y = area.y, w = area.w, h = area.h })
+    resolve_overlaps(ws, items, area)
+    fill_gaps(ws, items, area)
     ws.pack_area = { x = area.x, y = area.y, w = area.w, h = area.h }
     return
   end
 
   local holes = { { x = area.x, y = area.y, w = area.w, h = area.h } }
+  local keep = {}
   for _, pair in ipairs(locked) do
-    local rect = lock_box(area, pair.lock)
+    local desired = lock_box(area, pair.lock)
+    local rect = nil
+    local best, best_a = nil, -1
+    for _, hole in ipairs(holes) do
+      local x = math.max(desired.x, hole.x)
+      local y = math.max(desired.y, hole.y)
+      local x2 = math.min(desired.x + desired.w, hole.x + hole.w)
+      local y2 = math.min(desired.y + desired.h, hole.y + hole.h)
+      local w, h = x2 - x, y2 - y
+      if w >= 1 and h >= 1 and w * h > best_a then
+        best_a = w * h
+        best = { x = x, y = y, w = w, h = h }
+      end
+    end
+    if best then
+      rect = best
+    elseif #holes > 0 then
+      table.sort(holes, function(a, b)
+        return (a.w * a.h) > (b.w * b.h)
+      end)
+      local host = holes[1]
+      rect = {
+        x = host.x,
+        y = host.y,
+        w = math.min(desired.w, host.w),
+        h = math.min(desired.h, host.h),
+      }
+    else
+      rect = desired
+    end
     record_place(ws, pair.item, rect)
+    keep[pair.item.id] = true
     tag_lock(pair.item.target, true)
-    holes = subtract_rect(holes, rect)
+    if ws.last_box[pair.item.id] then
+      holes = subtract_rect(holes, ws.last_box[pair.item.id])
+    end
   end
   if #free > 0 then
     if #holes == 0 then
-      pack_fill(ws, free, { x = area.x, y = area.y, w = area.w, h = area.h })
+      resolve_overlaps(ws, items, area, keep)
     else
       pack_into_free(ws, free, holes)
     end
   end
+  resolve_overlaps(ws, items, area, keep)
+  fill_gaps(ws, items, area)
   ws.pack_area = { x = area.x, y = area.y, w = area.w, h = area.h }
 end
 
@@ -812,32 +1210,7 @@ local function place_columns(ctx)
 end
 
 local function pack_squares(ws, items, rect, horizontal)
-  if #items == 0 or rect.w < 8 or rect.h < 8 then
-    return
-  end
-  local n = #items
-  local size
-  if horizontal then
-    size = math.min(rect.h, rect.w / n)
-  else
-    size = math.min(rect.w, rect.h / n)
-  end
-  size = math.max(1, size)
-  if horizontal then
-    local total = size * n
-    local x = rect.x + math.max(0, (rect.w - total) / 2)
-    local y = rect.y + math.max(0, (rect.h - size) / 2)
-    for i, item in ipairs(items) do
-      record_place(ws, item, { x = x + (i - 1) * size, y = y, w = size, h = size })
-    end
-  else
-    local total = size * n
-    local x = rect.x + math.max(0, (rect.w - size) / 2)
-    local y = rect.y + math.max(0, (rect.h - total) / 2)
-    for i, item in ipairs(items) do
-      record_place(ws, item, { x = x, y = y + (i - 1) * size, w = size, h = size })
-    end
-  end
+  pack_fill(ws, items, rect)
 end
 
 local function place_center(ctx)
@@ -880,61 +1253,61 @@ local function place_center(ctx)
     end
   end
 
+  local hub_box = scrolling_single_box(area)
+  local hub_w, hub_h = hub_box.w, hub_box.h
+  local cx, cy = hub_box.x, hub_box.y
+
   if n == 1 or #sats == 0 then
-    record_place(ws, { id = hub_id, target = hub_target }, area)
+    record_place(ws, { id = hub_id, target = hub_target }, hub_box)
     ws.pack_area = { x = area.x, y = area.y, w = area.w, h = area.h }
     return
   end
-
-  local short = math.min(area.w, area.h)
-  local hub_frac = clamp(0.56 - 0.025 * #sats, 0.38, 0.56)
-  local cs = short * hub_frac
-  local min_ring = math.min(MIN_W, area.w / 4)
-  if area.w - cs < min_ring * 2 then
-    cs = math.max(MIN_W, area.w - min_ring * 2)
-  end
-  if area.h - cs < math.min(MIN_H, area.h / 4) * 2 then
-    cs = math.max(MIN_H, area.h - math.min(MIN_H, area.h / 4) * 2)
-  end
-  local cx = area.x + (area.w - cs) / 2
-  local cy = area.y + (area.h - cs) / 2
-  local hub_box = { x = cx, y = cy, w = cs, h = cs }
   record_place(ws, { id = hub_id, target = hub_target }, hub_box)
   local frac = fractions(area, hub_box)
   frac.class = window_class(hub_target)
+  frac.hub = true
   ws.locks[hub_id] = frac
+
+  local all = { { id = hub_id, target = hub_target } }
+  for _, sat in ipairs(sats) do
+    table.insert(all, sat)
+  end
 
   if ws.arranged then
     local ready = true
+    if area_changed(ws.pack_area, area) then
+      ready = false
+    end
     for _, item in ipairs(sats) do
       if not ws.last_box[item.id] then
         ready = false
         break
       end
     end
-    if ready then
+    if ready and not tiles_overlap(ws, all) then
       for _, item in ipairs(sats) do
         record_place(ws, item, remap_box(ws.last_box[item.id], ws.pack_area, area))
       end
+      resolve_overlaps(ws, all, area, { [hub_id] = true })
       ws.pack_area = { x = area.x, y = area.y, w = area.w, h = area.h }
       return
     end
     ws.arranged = false
   end
 
-  local top = { x = area.x, y = area.y, w = area.w, h = math.max(0, cy - area.y) }
-  local bot = { x = area.x, y = cy + cs, w = area.w, h = math.max(0, area.y + area.h - (cy + cs)) }
-  local left = { x = area.x, y = cy, w = math.max(0, cx - area.x), h = cs }
-  local right = { x = cx + cs, y = cy, w = math.max(0, area.x + area.w - (cx + cs)), h = cs }
-  local buckets = { top = {}, bottom = {}, left = {}, right = {} }
-  local cycle = (area.w >= area.h) and { "right", "left", "top", "bottom" } or { "top", "bottom", "left", "right" }
-  for i, item in ipairs(sats) do
-    table.insert(buckets[cycle[((i - 1) % 4) + 1]], item)
+  local regions = {
+    { rect = { x = area.x, y = area.y, w = area.w, h = math.max(0, cy - area.y) } },
+    { rect = { x = area.x, y = cy + hub_h, w = area.w, h = math.max(0, area.y + area.h - (cy + hub_h)) } },
+    { rect = { x = area.x, y = cy, w = math.max(0, cx - area.x), h = hub_h } },
+    { rect = { x = cx + hub_w, y = cy, w = math.max(0, area.x + area.w - (cx + hub_w)), h = hub_h } },
+  }
+  assign_by_area(sats, regions)
+  for _, region in ipairs(regions) do
+    if region.items and #region.items > 0 then
+      pack_fill(ws, region.items, region.rect)
+    end
   end
-  pack_squares(ws, buckets.top, top, true)
-  pack_squares(ws, buckets.bottom, bot, true)
-  pack_squares(ws, buckets.left, left, false)
-  pack_squares(ws, buckets.right, right, false)
+  resolve_overlaps(ws, all, area, { [hub_id] = true })
   ws.pack_area = { x = area.x, y = area.y, w = area.w, h = area.h }
 end
 
@@ -1079,6 +1452,16 @@ local function handle_msg(ctx, msg)
       ws.mode = rest
       if rest ~= "center" then
         ws.hub_id = nil
+        ws.arranged = false
+        ws.locks = ws.locks or {}
+        for _, target in ipairs(ctx.targets) do
+          local id = target_id(target)
+          if ws.locks[id] and ws.locks[id].hub then
+            ws.locks[id] = nil
+            tag_lock(target, false)
+          end
+        end
+        save_locks(workspace_id(ctx), ws)
       end
       return true
     end
@@ -1122,6 +1505,7 @@ local function handle_msg(ctx, msg)
     end
     local frac = fractions(area, rect)
     frac.class = window_class(target)
+    frac.hub = true
     ws.locks = ws.locks or {}
     ws.locks[ws.hub_id] = frac
     tag_lock(target, true)

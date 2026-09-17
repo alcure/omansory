@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 — 2026-09-17
+
+- Center hub matches a single window in scrolling (square aspect if that Omarchy toggle is on, otherwise `column_width`).
+- Super+Alt+O toggles Center on/off and flashes **CENTER ON / CENTER OFF**; fit still flashes **MASONRY ON / OFF**.
+- Bar glyph sits to the right of the clock: 2×2 squares for Masonry Mode, framed inner square for Central Mode.
+- Fit packing does not overlap tiles, absorbs leftover holes, and sets `gaps_in` to 0 on Omansory workspaces.
+- `omansory refresh` reloads the bar plugin without restarting the shell (avoids unpainted strips).
+
 ## 1.4.0 — 2026-09-17
 
 - Center mode (`Super+Alt+O` / `omansory center`): focused window locked as a middle square, others as squares around it; satellites still swap with Super+Shift+arrows.

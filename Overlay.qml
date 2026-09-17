@@ -13,21 +13,30 @@ Item {
   property var manifest: null
   property bool opened: false
   property string mode: "on"
+  property string pack: ""
   property int workspace: 0
   property real rocker: 1
 
   readonly property string pluginId: (manifest && manifest.id) ? String(manifest.id) : "omansory"
   readonly property bool isOn: mode !== "off"
+  readonly property bool isCenter: pack === "center"
+  readonly property string packLabel: {
+    if (isCenter) return isOn ? "CENTER ON" : "CENTER OFF"
+    if (!isOn) return "OFF"
+    return "MASONRY ON"
+  }
   readonly property color magenta: "#ff71ce"
   readonly property color cyan: "#05d9e8"
+  readonly property color ink: isOn ? magenta : cyan
   readonly property color plate: "#14081f"
   readonly property string uiFont: Style.font.family
-  readonly property int hudWidth: Style.space(168)
+  readonly property int hudWidth: Style.space(176)
 
   function open(payloadJson) {
     var payload = {}
     try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) { payload = {} }
     root.mode = payload.mode === "off" ? "off" : "on"
+    root.pack = payload.pack === "center" ? "center" : (payload.pack || "fit")
     root.workspace = Number(payload.workspace || 0)
     root.rocker = root.isOn ? 1 : -1
     hud.pop = 1
@@ -136,6 +145,55 @@ Item {
           font.bold: true
           font.letterSpacing: 2.2
           color: Util.alpha(root.isOn ? root.magenta : root.cyan, 0.9)
+        }
+
+        Item {
+          width: Style.space(22)
+          height: Style.space(22)
+          anchors.horizontalCenter: parent.horizontalCenter
+
+          Repeater {
+            model: root.isCenter ? 0 : 4
+            Rectangle {
+              required property int index
+              property real gap: Style.space(2)
+              property real cell: (parent.width - gap * 3) / 2
+              x: gap + (index % 2) * (cell + gap)
+              y: gap + Math.floor(index / 2) * (cell + gap)
+              width: cell
+              height: cell
+              radius: 1
+              color: root.ink
+            }
+          }
+
+          Rectangle {
+            visible: root.isCenter
+            anchors.fill: parent
+            color: "transparent"
+            border.width: Math.max(2, Style.space(2))
+            border.color: root.ink
+            radius: 2
+          }
+          Rectangle {
+            visible: root.isCenter
+            anchors.centerIn: parent
+            width: parent.width * 0.42
+            height: parent.height * 0.42
+            radius: 1
+            color: root.ink
+          }
+        }
+
+        Text {
+          anchors.horizontalCenter: parent.horizontalCenter
+          textFormat: Text.PlainText
+          text: root.packLabel
+          font.family: "JetBrainsMono Nerd Font"
+          font.pixelSize: Style.font.caption
+          font.bold: true
+          font.letterSpacing: 1.4
+          color: Util.alpha(root.isOn ? root.magenta : root.cyan, 0.85)
         }
 
         Item {

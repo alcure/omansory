@@ -11,20 +11,17 @@ BarWidget {
   property bool masonryOn: false
   property int activeWorkspace: 0
   property var masonryWorkspaces: []
+  property string packKind: ""
   property bool pulse: false
 
+  readonly property bool centerMode: masonryOn && packKind === "center"
   readonly property color barForeground: bar ? bar.barForeground : Color.foreground
   readonly property color accent: "#ff71ce"
-  readonly property string glyph: "󰕰"
-  readonly property string wsLabel: {
-    if (!masonryOn || masonryWorkspaces.length === 0) return ""
-    var parts = []
-    for (var i = 0; i < masonryWorkspaces.length; i++) parts.push(String(masonryWorkspaces[i]))
-    return parts.join("·")
-  }
+  readonly property color ink: masonryOn ? accent : Qt.darker(barForeground, 1.55)
   readonly property string tooltipText: {
-    if (masonryOn) return "Omansory on workspace " + (activeWorkspace || "?") + " — click to restore"
-    return "Omansory off — click to pack this workspace"
+    if (!masonryOn) return "Omansory off — click to pack this workspace"
+    if (centerMode) return "Central Mode — workspace " + (activeWorkspace || "?") + " — click to restore"
+    return "Masonry Mode — workspace " + (activeWorkspace || "?") + " — click to restore"
   }
 
   visible: true
@@ -43,11 +40,13 @@ BarWidget {
   function applyStatus(raw) {
     var parsed = {}
     try { parsed = JSON.parse(raw || "{}") || {} } catch (e) { parsed = {} }
-    var was = masonryOn
+    var wasOn = masonryOn
+    var wasKind = packKind
     masonryOn = parsed.active === true
     activeWorkspace = Number(parsed.workspace || 0)
     masonryWorkspaces = parsed.workspaces || []
-    if (was !== masonryOn) {
+    packKind = String(parsed.kind || "")
+    if (wasOn !== masonryOn || wasKind !== packKind) {
       pulse = true
       pulseTimer.restart()
     }
@@ -111,27 +110,51 @@ BarWidget {
       anchors.centerIn: parent
       spacing: Style.space(6)
 
-      Text {
-        textFormat: Text.PlainText
-        text: root.glyph
-        color: root.masonryOn ? root.accent : Qt.darker(root.barForeground, 1.55)
-        font.family: "JetBrainsMono Nerd Font"
-        font.pixelSize: Style.bar.iconFont
+      Item {
+        id: glyphBox
+        width: Style.bar.iconFont
+        height: Style.bar.iconFont
         anchors.verticalCenter: parent.verticalCenter
         scale: root.pulse ? 1.18 : 1.0
         Behavior on scale { NumberAnimation { duration: 180 } }
-        Behavior on color { ColorAnimation { duration: 180 } }
-      }
 
-      Text {
-        visible: root.wsLabel !== "" && !root.vertical
-        textFormat: Text.PlainText
-        text: root.wsLabel
-        color: root.accent
-        font.family: bar ? bar.fontFamily : Style.font.family
-        font.pixelSize: Style.font.caption
-        font.bold: true
-        anchors.verticalCenter: parent.verticalCenter
+        property real gap: Math.max(1, width * 0.10)
+        property real cell: (width - gap * 3) / 2
+
+        Repeater {
+          model: root.centerMode ? 0 : 4
+          Rectangle {
+            required property int index
+            x: glyphBox.gap + (index % 2) * (glyphBox.cell + glyphBox.gap)
+            y: glyphBox.gap + Math.floor(index / 2) * (glyphBox.cell + glyphBox.gap)
+            width: glyphBox.cell
+            height: glyphBox.cell
+            radius: 1
+            color: root.ink
+            Behavior on color { ColorAnimation { duration: 180 } }
+          }
+        }
+
+        Rectangle {
+          visible: root.centerMode
+          anchors.fill: parent
+          anchors.margins: 1
+          color: "transparent"
+          border.width: Math.max(1.5, glyphBox.gap)
+          border.color: root.ink
+          radius: 2
+          Behavior on border.color { ColorAnimation { duration: 180 } }
+        }
+
+        Rectangle {
+          visible: root.centerMode
+          anchors.centerIn: parent
+          width: parent.width * 0.42
+          height: parent.height * 0.42
+          radius: 1
+          color: root.ink
+          Behavior on color { ColorAnimation { duration: 180 } }
+        }
       }
     }
   }
