@@ -1,0 +1,11 @@
+# Byte-compiled / cache
+__pycache__/
+*.pyc
+.DS_Store
+
+# Editor
+*.swp
+*~
+
+# Local backups created by install
+*.bak.omansory.*

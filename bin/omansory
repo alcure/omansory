@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+# Omansory — toggle a per-workspace masonry layout on Omarchy / Hyprland.
+
+set -euo pipefail
+
+PLUGIN_ID="omansory"
+LAYOUT_NAME="lua:omansory"
+BEGIN="-- BEGIN ${PLUGIN_ID}"
+END="-- END ${PLUGIN_ID}"
+DEFAULT_BIND="SUPER + SHIFT + O"
+OBSIDIAN_FALLBACK="SUPER + SHIFT + ALT + O"
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+SHARE="${XDG_DATA_HOME:-$HOME/.local/share}/omansory"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omansory"
+OMARCHY_LAYOUTS="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/workspace-layouts"
+HYPR_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+HYPRLAND_LUA="$HYPR_DIR/hyprland.lua"
+BINDINGS_LUA="$HYPR_DIR/bindings.lua"
+LAYOUT_LUA="$HYPR_DIR/omansory.lua"
+BIN_LINK="$HOME/.local/bin/omansory"
+
+pt() {
+  local lang="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"
+  [[ "${lang,,}" == pt* ]]
+}
+
+die() {
+  echo "omansory: $*" >&2
+  exit 1
+}
+
+usage() {
+  if pt; then
+    cat <<'EOF'
+Uso: omansory <comando>
+
+  toggle          Liga/desliga masonry no workspace ativo
+  on              Liga no workspace ativo
+  off             Desliga no workspace ativo
+  status          Mostra o layout do workspace ativo
+  install         Instala layout, atalho Super+Shift+O e imagens
+  uninstall       Remove atalho, require e symlink (mantém o clone)
+  cols <n|+|->    Ajusta colunas do workspace ativo (só com Omansory ligado)
+
+Omansory substitui o atalho padrão do Obsidian (Super+Shift+O).
+Na instalação, o Obsidian é remapeado para Super+Shift+Alt+O.
+EOF
+  else
+    cat <<'EOF'
+Usage: omansory <command>
+
+  toggle          Toggle masonry on the active workspace
+  on              Enable on the active workspace
+  off             Disable on the active workspace
+  status          Show the active workspace layout
+  install         Install layout, Super+Shift+O bind, and images
+  uninstall       Remove bind, require, and symlink (keeps the clone)
+  cols <n|+|->    Change column count on the active workspace (Omansory on)
+
+Omansory replaces the stock Obsidian shortcut (Super+Shift+O).
+Install remaps Obsidian to Super+Shift+Alt+O.
+EOF
+  fi
+}
+
+active_workspace() {
+  hyprctl activeworkspace -j | jq -r '.id'
+}
+
+active_layout() {
+  hyprctl activeworkspace -j | jq -r '.tiledLayout // .layout // empty'
+}
+
+is_omansory() {
+  local layout="${1:-}"
+  [[ "$layout" == "$LAYOUT_NAME" || "$layout" == "omansory" || "$layout" == lua:omansory ]]
+}
+
+notify() {
+  local mode="$1" workspace="$2"
+  local image headline body
+  mkdir -p "$SHARE"
+  if [[ "$mode" == on ]]; then
+    image="$SHARE/on.jpg"
+    [[ -f "$image" ]] || image="$ROOT/share/omansory/on.jpg"
+    if pt; then
+      headline="Omansory ligado"
+      body="Masonry no workspace ${workspace}"
+    else
+      headline="Omansory on"
+      body="Masonry on workspace ${workspace}"
+    fi
+  else
+    image="$SHARE/off.jpg"
+    [[ -f "$image" ]] || image="$ROOT/share/omansory/off.jpg"
+    if pt; then
+      headline="Omansory desligado"
+      body="Workspace ${workspace} voltou ao layout anterior"
+    else
+      headline="Omansory off"
+      body="Workspace ${workspace} restored the previous layout"
+    fi
+  fi
+
+  local args=(--app-name Omansory -t 2800)
+  [[ -f "$image" ]] && args+=(--image "$image")
+  omarchy-notification-send "${args[@]}" "$headline" "$body" || true
+}
+
+write_workspace_layout() {
+  local workspace="$1" layout="$2"
+  mkdir -p "$OMARCHY_LAYOUTS"
+  printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$workspace" "$layout" \
+    >"$OMARCHY_LAYOUTS/${workspace}.lua"
+  hyprctl eval "hl.workspace_rule({ workspace = \"$workspace\", layout = \"$layout\" })" >/dev/null 2>&1 \
+    || hyprctl keyword workspace "$workspace, layout:$layout"
+}
+
+set_layout() {
+  local workspace="$1" layout="$2" mode="$3"
+  write_workspace_layout "$workspace" "$layout"
+  notify "$mode" "$workspace"
+}
+
+cmd_status() {
+  local workspace layout
+  workspace="$(active_workspace)"
+  layout="$(active_layout)"
+  if pt; then
+    echo "workspace ${workspace}: ${layout}"
+    if is_omansory "$layout"; then
+      echo "Omansory: ligado"
+    else
+      echo "Omansory: desligado"
+    fi
+  else
+    echo "workspace ${workspace}: ${layout}"
+    if is_omansory "$layout"; then
+      echo "Omansory: on"
+    else
+      echo "Omansory: off"
+    fi
+  fi
+}
+
+cmd_on() {
+  local workspace layout prev
+  workspace="$(active_workspace)"
+  [[ "$workspace" =~ ^-?[0-9]+$ ]] || die "no active workspace"
+  layout="$(active_layout)"
+  if is_omansory "$layout"; then
+    notify on "$workspace"
+    return 0
+  fi
+  mkdir -p "$STATE_DIR"
+  prev="${layout:-dwindle}"
+  [[ -n "$prev" && "$prev" != "null" ]] || prev="dwindle"
+  printf '%s\n' "$prev" >"$STATE_DIR/${workspace}.prev"
+  set_layout "$workspace" "$LAYOUT_NAME" on
+}
+
+cmd_off() {
+  local workspace layout prev
+  workspace="$(active_workspace)"
+  [[ "$workspace" =~ ^-?[0-9]+$ ]] || die "no active workspace"
+  layout="$(active_layout)"
+  prev="dwindle"
+  if [[ -f "$STATE_DIR/${workspace}.prev" ]]; then
+    prev="$(<"$STATE_DIR/${workspace}.prev")"
+  fi
+  [[ -n "$prev" ]] || prev="dwindle"
+  if is_omansory "$prev"; then
+    prev="dwindle"
+  fi
+  set_layout "$workspace" "$prev" off
+}
+
+cmd_toggle() {
+  local layout
+  layout="$(active_layout)"
+  if is_omansory "$layout"; then
+    cmd_off
+  else
+    cmd_on
+  fi
+}
+
+cmd_cols() {
+  local arg="${1:-}"
+  [[ -n "$arg" ]] || die "cols expects +, -, or a number"
+  is_omansory "$(active_layout)" || die "Omansory is not active on this workspace"
+  hyprctl dispatch layoutmsg "cols $arg" >/dev/null 2>&1 \
+    || hyprctl dispatch "hl.dsp.layout(\"cols $arg\")" >/dev/null
+}
+
+lua_escape() {
+  printf '%s' "$1" | sed "s/\\\\/\\\\\\\\/g; s/\"/\\\\\"/g"
+}
+
+bindings_block() {
+  local plugin_bin
+  plugin_bin="$(lua_escape "$BIN_LINK")"
+  cat <<EOF
+${BEGIN}
+hl.unbind("${DEFAULT_BIND}")
+o.bind("${DEFAULT_BIND}", "Toggle Omansory masonry on workspace", "${plugin_bin} toggle")
+hl.unbind("${OBSIDIAN_FALLBACK}")
+o.bind("${OBSIDIAN_FALLBACK}", "Obsidian", { launch = "obsidian", focus = "^obsidian\$" })
+${END}
+EOF
+}
+
+hyprland_block() {
+  cat <<EOF
+${BEGIN}
+require("hypr.omansory")
+${END}
+EOF
+}
+
+upsert_marked_block() {
+  local file="$1" block="$2" anchor="$3"
+  OMANSORY_BLOCK="$block" python3 - "$file" "$BEGIN" "$END" "$anchor" <<'PY'
+import os
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+begin, end, anchor = sys.argv[2], sys.argv[3], sys.argv[4]
+block = os.environ["OMANSORY_BLOCK"].rstrip() + "\n"
+text = path.read_text(encoding="utf-8") if path.exists() else ""
+
+start = text.find(begin)
+stop = text.find(end)
+if start != -1 and stop != -1 and stop > start:
+    stop += len(end)
+    while stop < len(text) and text[stop] == "\n":
+        stop += 1
+    text = text[:start].rstrip() + "\n\n" + block + "\n" + text[stop:].lstrip("\n")
+elif anchor and anchor in text:
+    text = text.replace(anchor, block + "\n" + anchor, 1)
+else:
+    if text and not text.endswith("\n"):
+        text += "\n"
+    text = text + "\n" + block
+
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+PY
+}
+
+remove_marked_block() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  python3 - "$file" "$BEGIN" "$END" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+begin, end = sys.argv[2], sys.argv[3]
+text = path.read_text(encoding="utf-8")
+start = text.find(begin)
+stop = text.find(end)
+if start == -1 or stop == -1 or stop < start:
+    sys.exit(0)
+stop += len(end)
+while stop < len(text) and text[stop] == "\n":
+    stop += 1
+new = text[:start].rstrip() + "\n\n" + text[stop:].lstrip("\n")
+path.write_text(new if new.endswith("\n") else new + "\n", encoding="utf-8")
+PY
+}
+
+install_files() {
+  mkdir -p "$SHARE" "$HOME/.local/bin" "$HYPR_DIR"
+  ln -sfn "$ROOT/hypr/omansory.lua" "$LAYOUT_LUA"
+  ln -sfn "$SELF" "$BIN_LINK"
+  install -m 644 "$ROOT/share/omansory/on.jpg" "$SHARE/on.jpg"
+  install -m 644 "$ROOT/share/omansory/off.jpg" "$SHARE/off.jpg"
+}
+
+cmd_install() {
+  [[ -f "$HYPRLAND_LUA" ]] || die "missing $HYPRLAND_LUA"
+  [[ -f "$BINDINGS_LUA" ]] || die "missing $BINDINGS_LUA"
+  cp -a "$HYPRLAND_LUA" "$HYPRLAND_LUA.bak.omansory.$(date +%s)"
+  cp -a "$BINDINGS_LUA" "$BINDINGS_LUA.bak.omansory.$(date +%s)"
+  install_files
+  upsert_marked_block "$HYPRLAND_LUA" "$(hyprland_block)" 'require("default.hypr.toggles")'
+  upsert_marked_block "$BINDINGS_LUA" "$(bindings_block)" ""
+  hyprctl reload >/dev/null 2>&1 || true
+  if pt; then
+    echo "Omansory instalado."
+    echo "Atalho: Super+Shift+O (toggle no workspace ativo)."
+    echo "Obsidian: Super+Shift+Alt+O."
+  else
+    echo "Omansory installed."
+    echo "Shortcut: Super+Shift+O (toggle on the active workspace)."
+    echo "Obsidian: Super+Shift+Alt+O."
+  fi
+}
+
+cmd_uninstall() {
+  remove_marked_block "$HYPRLAND_LUA"
+  remove_marked_block "$BINDINGS_LUA"
+  rm -f "$BIN_LINK" "$LAYOUT_LUA"
+  hyprctl reload >/dev/null 2>&1 || true
+  if pt; then
+    echo "Omansory removido do Hyprland. O clone do repositório foi mantido."
+  else
+    echo "Omansory removed from Hyprland. The git clone was kept."
+  fi
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  toggle) cmd_toggle ;;
+  on | enable) cmd_on ;;
+  off | disable) cmd_off ;;
+  status) cmd_status ;;
+  install) cmd_install ;;
+  uninstall | remove) cmd_uninstall ;;
+  cols | columns) shift; cmd_cols "${1:-}" ;;
+  -h | --help | help | "") usage ;;
+  *) die "unknown command: $cmd" ;;
+esac
