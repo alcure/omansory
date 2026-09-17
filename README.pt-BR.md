@@ -37,28 +37,35 @@ O instalador:
 
 | Tecla | Ação |
 | --- | --- |
-| `Super+Shift+O` | Liga/desliga masonry no workspace **ativo** |
-| Ícone `󰕰` na barra | Ao lado dos workspaces; clique alterna. Magenta + ids quando ligado. |
+| `Super+Shift+O` | Liga/desliga masonry **fit** no workspace ativo |
+| `Super+Alt+O` | Liga/desliga o **modo centro**: janela focada travada no meio, as outras em quadrados ao redor |
+| `Super+Shift+K` | Trava / solta a janela focada (borda magenta). O modo centro trava o hub sozinho. |
+| Ícone `󰕰` na barra | Ao lado dos workspaces; clique alterna o fit. Magenta + ids quando ligado. |
 | `Super+Shift+Alt+O` | Obsidian (depois da instalação) |
+| `Super+Shift+←↑↓→` | Troca a janela focada com a vizinha nessa direção |
 | `Super+-` / `Super++` | Alarga / estreita a coluna focada (iguais ao Omarchy) |
 | `Super+Shift+-` / `Super+Shift++` | Encolhe / cresce a janela focada na vertical |
 | `Super+L` | Continua o toggle dwindle ↔ scrolling do Omarchy (se usar, sobrescreve este workspace) |
 
 ```sh
 omansory toggle
+omansory center        # Super+Alt+O — janela focada no centro
 omansory on
 omansory off
 omansory status
 omansory cols 3    # 1–6, ou + / -
 omansory resize h -100
 omansory resize v 100
+omansory lock          # Super+Shift+K — trava a fatia desta janela neste workspace
 ```
 
-Ao **ligar**, aparece o cartão da grade magenta (ON · ATIVO). Ao **desligar**, o cartão noturno (OFF · INATIVO). O texto segue `$LANG`. A wordmark usa **JetBrainsMono Nerd Font**, a fonte atual da interface do Omarchy.
+Ao **ligar** ou **desligar**, um interruptor de parede retrowave (ON / OFF, em inglês) cai sob a barra e some depressa. Sem ATIVO/INATIVO.
 
 ## O que o layout faz
 
-O padrão **fit** divide a área de trabalho inteira: todas as janelas tiled ficam na tela e não sobra furo de wallpaper. Navegadores, editores e documentos ganham mais área que terminais; Super± ainda ajusta a fatia da janela focada. `omansory mode columns` volta às colunas iguais.
+O padrão **fit** é um treemap squarified: retângulos e quadrados que preenchem o monitor, sem um app sozinho virar barra de largura inteira (e sem L — o Wayland não recorta isso). Navegadores e editores ainda ganham mais área que terminais; Super± ajusta a fatia focada.
+
+**Trava (por workspace):** Super+Shift+K pinça a fatia atual da janela focada. A borda fica magenta. Ligar e desligar o Omansory devolve essa janela à mesma caixa relativa; as demais se encaixam em volta. O atalho de novo solta. As travas ficam em `~/.local/state/omansory/locks/<id-do-workspace>.jsonl`. `omansory mode columns` volta às colunas iguais.
 
 Janelas flutuantes / pinadas (incluindo o pop-out `Super+O` do Omarchy) ficam de fora.
 
