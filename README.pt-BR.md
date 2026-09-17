@@ -84,7 +84,7 @@ Um interruptor retrowave aparece sob a barra: **MASONRY ON / OFF** ou **CENTER O
 
 ### Modo fit (`Super+Shift+O`)
 
-Treemap squarified que **preenche a área útil**. Navegadores e editores ganham mais espaço que terminais. Sem barras de largura inteira, sem sobreposição; buracos restantes são absorvidos pelo vizinho.
+Treemap squarified que **preenche a área útil**. Toda janela tiled começa com a mesma fatia. Sem barras de largura inteira, sem sobreposição; buracos restantes são absorvidos pelo vizinho. Super+- continua crescendo ou encolhendo a janela focada.
 
 ### Modo centro (`Super+Alt+O`)
 

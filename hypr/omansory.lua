@@ -312,36 +312,9 @@ local function window_class(target)
   return string.lower((window and (window.class or window.initial_class)) or "")
 end
 
-local function classify(class)
-  if class:find("brave", 1, true) or class:find("firefox", 1, true) or class:find("chrom", 1, true) or class:find("webkit", 1, true) or class:find("librewolf", 1, true) then
-    return "wide"
-  end
-  if class:find("obsidian", 1, true) or class:find("omawrite", 1, true) or class:find("zed", 1, true) or class:find("codium", 1, true) or class:find("sublime", 1, true) or class:find("libreoffice", 1, true) or class:find("evince", 1, true) or class:find("writer", 1, true) or class:find("code-oss", 1, true) or class:find("vscodium", 1, true) or class:find("dev.zed", 1, true) then
-    return "wide"
-  end
-  if class:find("ghostty", 1, true) or class:find("kitty", 1, true) or class:find("alacritty", 1, true) or class:find("foot", 1, true) or class:find("org.omarchy.agent", 1, true) or class:find("org.omarchy.terminal", 1, true) or class:find("org.omarchy.btop", 1, true) then
-    return "tall"
-  end
-  if class:find("code", 1, true) then
-    return "wide"
-  end
-  return "tile"
-end
-
-local function base_weight(kind)
-  if kind == "wide" then
-    return 4
-  end
-  if kind == "tall" then
-    return 1
-  end
-  return 2
-end
-
-local function item_weight(ws, target, id)
-  local kind = classify(window_class(target))
+local function item_weight(ws, id)
   local bonus = (ws.bonus and ws.bonus[id]) or 0
-  return math.max(0.5, base_weight(kind) + bonus), kind
+  return math.max(0.5, 1 + bonus)
 end
 
 local function state_dir()
@@ -1034,12 +1007,11 @@ local function place_fit(ctx)
   local items = {}
   for _, target in ipairs(ctx.targets) do
     local id = target_id(target)
-    local weight, kind = item_weight(ws, target, id)
+    local weight = item_weight(ws, id)
     table.insert(items, {
       id = id,
       target = target,
       weight = weight,
-      kind = kind,
       class = window_class(target),
     })
   end

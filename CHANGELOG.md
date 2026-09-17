@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.2 — 2026-09-17
+
+- Fit packing no longer prefers browsers or editors over terminals. Every tiled window starts equal; Super+- still changes the focused share.
+
 ## 1.5.1 — 2026-09-17
 
 - Namespaced shell plugin id `alcure.omansory` for the [Omarchy plugin marketplace](https://plugins.omarchy.org/).

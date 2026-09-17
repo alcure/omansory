@@ -84,7 +84,7 @@ A compact retrowave wall switch flashes under the bar: **MASONRY ON / OFF** or *
 
 ### Fit mode (`Super+Shift+O`)
 
-Squarified treemap that **fills the work area**. Browsers and editors get more space than terminals. No full-width single-app bars, no overlapping tiles, leftover holes are absorbed by a neighbor. Inner `gaps_in` is 0 while Omansory is on.
+Squarified treemap that **fills the work area**. Every tiled window starts with the same share. No full-width single-app bars, no overlapping tiles, leftover holes are absorbed by a neighbor. Inner `gaps_in` is 0 while Omansory is on. Super+- still grows or shrinks the focused tile.
 
 ### Center mode (`Super+Alt+O`)
 
