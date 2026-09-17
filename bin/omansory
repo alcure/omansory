@@ -4,6 +4,7 @@
 set -euo pipefail
 
 PLUGIN_ID="omansory"
+SHELL_PLUGIN_ID="alcure.omansory"
 LAYOUT_NAME="lua:omansory"
 BEGIN="-- BEGIN ${PLUGIN_ID}"
 END="-- END ${PLUGIN_ID}"
@@ -197,7 +198,7 @@ flash_osd() {
   local payload
   payload=$(jq -nc --arg mode "$mode" --arg pack "$pack" --argjson workspace "${workspace:-0}" \
     '{mode:$mode, pack:$pack, workspace:$workspace}')
-  omarchy-shell shell summon omansory "$payload" >/dev/null 2>&1 || true
+  omarchy-shell shell summon "${SHELL_PLUGIN_ID}" "$payload" >/dev/null 2>&1 || true
 }
 
 write_workspace_layout() {
@@ -552,8 +553,13 @@ install_files() {
 }
 
 install_shell_plugin() {
-  local dest="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/omansory"
+  local dest="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/${SHELL_PLUGIN_ID}"
+  local legacy="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/omansory"
   mkdir -p "$(dirname "$dest")"
+  omarchy plugin disable omansory >/dev/null 2>&1 || true
+  if [[ -L "$legacy" || -e "$legacy" ]] && [[ "$(readlink -f "$legacy" 2>/dev/null || true)" == "$ROOT" ]]; then
+    rm -f "$legacy"
+  fi
   if [[ "$(readlink -f "$dest" 2>/dev/null || true)" != "$ROOT" ]]; then
     rm -rf "$dest"
     ln -sfn "$ROOT" "$dest"
@@ -562,9 +568,9 @@ install_shell_plugin() {
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
   local attempt
   for attempt in 1 2 3 4 5 6 7 8 9 10; do
-    if omarchy-plugin-list --json 2>/dev/null | jq -e --arg id omansory 'any(.[]; .id == $id)' >/dev/null; then
-      omarchy plugin enable omansory --section center --after omarchy.clock >/dev/null 2>&1 \
-        || omarchy plugin enable omansory --section center >/dev/null 2>&1 \
+    if omarchy-plugin-list --json 2>/dev/null | jq -e --arg id "$SHELL_PLUGIN_ID" 'any(.[]; .id == $id)' >/dev/null; then
+      omarchy plugin enable "${SHELL_PLUGIN_ID}" --section center --after omarchy.clock >/dev/null 2>&1 \
+        || omarchy plugin enable "${SHELL_PLUGIN_ID}" --section center >/dev/null 2>&1 \
         || true
       return 0
     fi
@@ -613,11 +619,15 @@ cmd_uninstall() {
   remove_marked_block "$HYPRLAND_LUA"
   remove_marked_block "$BINDINGS_LUA"
   rm -f "$BIN_LINK" "$LAYOUT_LUA"
+  omarchy plugin disable "${SHELL_PLUGIN_ID}" >/dev/null 2>&1 || true
+  omarchy plugin disable omansory >/dev/null 2>&1 || true
   hyprctl reload >/dev/null 2>&1 || true
   if pt; then
-    echo "Omansory removido do Hyprland. O clone do repositório foi mantido."
+    echo "Omansory removido do Hyprland e desativado na barra."
+    echo "Para apagar o plugin do Omarchy: omarchy plugin remove ${SHELL_PLUGIN_ID}"
   else
-    echo "Omansory removed from Hyprland. The git clone was kept."
+    echo "Omansory removed from Hyprland and disabled on the bar."
+    echo "To delete the Omarchy plugin folder: omarchy plugin remove ${SHELL_PLUGIN_ID}"
   fi
 }
 

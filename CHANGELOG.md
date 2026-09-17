@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1 — 2026-09-17
+
+- Namespaced shell plugin id `alcure.omansory` for the [Omarchy plugin marketplace](https://plugins.omarchy.org/).
+- Install via `omarchy plugin add https://github.com/alcure/omansory.git --enable`; Hyprland binds still need `install.sh`.
+- Root `preview.png` for the directory listing.
+
 ## 1.5.0 — 2026-09-17
 
 - Center hub matches a single window in scrolling (square aspect if that Omarchy toggle is on, otherwise `column_width`).

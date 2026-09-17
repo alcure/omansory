@@ -17,7 +17,7 @@ Item {
   property int workspace: 0
   property real rocker: 1
 
-  readonly property string pluginId: (manifest && manifest.id) ? String(manifest.id) : "omansory"
+  readonly property string pluginId: (manifest && manifest.id) ? String(manifest.id) : "alcure.omansory"
   readonly property bool isOn: mode !== "off"
   readonly property bool isCenter: pack === "center"
   readonly property string packLabel: {

@@ -6,7 +6,7 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "omansory"
+  moduleName: "alcure.omansory"
 
   property bool masonryOn: false
   property int activeWorkspace: 0

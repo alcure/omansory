@@ -5,6 +5,8 @@
 <p align="center">
   <a href="README.md">English</a>
   ·
+  <a href="https://plugins.omarchy.org/"><img alt="plugins Omarchy" src="https://img.shields.io/badge/plugins.omarchy.org-alcure.omansory-fda52b?labelColor=0b0f14"></a>
+  ·
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-aab3bc?labelColor=0b0f14"></a>
   <img alt="Omarchy 4" src="https://img.shields.io/badge/Omarchy-4-fda52b?labelColor=0b0f14">
   <img alt="Hyprland 0.55+" src="https://img.shields.io/badge/Hyprland-0.55%2B-05d9e8?labelColor=0b0f14">
@@ -17,6 +19,27 @@
 É um layout Lua do Hyprland (`lua:omansory`). Ele **não** se encaixa em cima do scrolling: enquanto está ligado, aquele workspace *é* Omansory. Só retângulos alinhados aos eixos (sem L). Nesse workspace o `gaps_in` interno vai a zero para as molduras se encostarem, sem filete de wallpaper.
 
 ## Instalar
+
+Id do plugin: `alcure.omansory`. Repositório: https://github.com/alcure/omansory
+
+### Marketplace (shell do Omarchy)
+
+```sh
+omarchy plugin add https://github.com/alcure/omansory.git --enable
+```
+
+Isso clona o repo em `~/.config/omarchy/plugins/alcure.omansory` e liga o ícone da barra. **Não** altera a config do Hyprland.
+
+Depois instale o layout e os atalhos (passo explícito; faz backup de `hyprland.lua` / `bindings.lua`):
+
+```sh
+chmod +x ~/.config/omarchy/plugins/alcure.omansory/install.sh
+~/.config/omarchy/plugins/alcure.omansory/install.sh
+```
+
+Se o ícone não ficar à direita do relógio: `omarchy plugin enable alcure.omansory --section center --after omarchy.clock`.
+
+### A partir de um clone git
 
 ```sh
 git clone https://github.com/alcure/omansory.git
@@ -32,10 +55,10 @@ O instalador:
 3. **Substitui Super+Shift+O** (Obsidian padrão) pelo toggle do masonry fit.
 4. Remapeia o Obsidian para **Super+Shift+Alt+O**.
 5. Liga **Super+Alt+O** ao modo centro.
-6. Coloca o ícone da barra **à direita do relógio**.
+6. Coloca o widget `alcure.omansory` **à direita do relógio**.
 7. Copia os stills retrowave das notificações.
 
-Se `omarchy refresh hyprland` apagar esses blocos, rode `./install.sh` de novo.
+O `install.sh` é opcional se você só quiser o ícone. Os atalhos de layout precisam desse passo. Se `omarchy refresh hyprland` apagar os blocos do Hyprland, rode o `install.sh` de novo. A pasta do plugin não contém symlinks internos.
 
 ## Uso
 
@@ -88,9 +111,10 @@ Para recarregar a barra: `omansory refresh` ou `omarchy-shell shell rescanPlugin
 
 ```sh
 omansory uninstall
+omarchy plugin remove alcure.omansory
 ```
 
-Remove os blocos de config e os symlinks. O clone git permanece. Os gaps internos voltam ao padrão do Omarchy naquele workspace.
+`omansory uninstall` remove os blocos do Hyprland, os links do CLI/layout e desativa o widget. `omarchy plugin remove` apaga a pasta clonada. Os gaps internos voltam ao padrão do Omarchy naquele workspace.
 
 ## Requisitos
 
