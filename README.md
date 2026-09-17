@@ -39,6 +39,8 @@ The installer:
 | --- | --- |
 | `Super+Shift+O` | Toggle masonry on the **active** workspace |
 | `Super+Shift+Alt+O` | Obsidian (after install) |
+| `Super+-` / `Super++` | Widen / narrow the focused column (same as Omarchy) |
+| `Super+Shift+-` / `Super+Shift++` | Shorten / grow the focused window vertically |
 | `Super+L` | Still Omarchy's dwindle ↔ scrolling toggle (overwrites this workspace if you use it) |
 
 ```sh
@@ -47,6 +49,8 @@ omansory on
 omansory off
 omansory status
 omansory cols 3    # 1–6, or + / -
+omansory resize h -100
+omansory resize v 100
 ```
 
 Turning it **on** shows the magenta-grid card (ON · ATIVO). Turning it **off** shows the night card (OFF · INATIVO). Copy is English or Portuguese from `$LANG`. The wordmark is **JetBrainsMono Nerd Font**, Omarchy's current UI typeface.

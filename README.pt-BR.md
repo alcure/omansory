@@ -39,6 +39,8 @@ O instalador:
 | --- | --- |
 | `Super+Shift+O` | Liga/desliga masonry no workspace **ativo** |
 | `Super+Shift+Alt+O` | Obsidian (depois da instalação) |
+| `Super+-` / `Super++` | Alarga / estreita a coluna focada (iguais ao Omarchy) |
+| `Super+Shift+-` / `Super+Shift++` | Encolhe / cresce a janela focada na vertical |
 | `Super+L` | Continua o toggle dwindle ↔ scrolling do Omarchy (se usar, sobrescreve este workspace) |
 
 ```sh
@@ -47,6 +49,8 @@ omansory on
 omansory off
 omansory status
 omansory cols 3    # 1–6, ou + / -
+omansory resize h -100
+omansory resize v 100
 ```
 
 Ao **ligar**, aparece o cartão da grade magenta (ON · ATIVO). Ao **desligar**, o cartão noturno (OFF · INATIVO). O texto segue `$LANG`. A wordmark usa **JetBrainsMono Nerd Font**, a fonte atual da interface do Omarchy.

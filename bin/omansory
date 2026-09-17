@@ -43,6 +43,7 @@ Uso: omansory <comando>
   install         Instala layout, atalho Super+Shift+O e imagens
   uninstall       Remove atalho, require e symlink (mantém o clone)
   cols <n|+|->    Ajusta colunas do workspace ativo (só com Omansory ligado)
+  resize h|v <px> Redimensiona a janela/coluna (atalhos Super± do Omarchy)
 
 Omansory substitui o atalho padrão do Obsidian (Super+Shift+O).
 Na instalação, o Obsidian é remapeado para Super+Shift+Alt+O.
@@ -58,6 +59,7 @@ Usage: omansory <command>
   install         Install layout, Super+Shift+O bind, and images
   uninstall       Remove bind, require, and symlink (keeps the clone)
   cols <n|+|->    Change column count on the active workspace (Omansory on)
+  resize h|v <px> Resize the focused column/window (Omarchy Super± keys)
 
 Omansory replaces the stock Obsidian shortcut (Super+Shift+O).
 Install remaps Obsidian to Super+Shift+Alt+O.
@@ -191,8 +193,25 @@ cmd_cols() {
   local arg="${1:-}"
   [[ -n "$arg" ]] || die "cols expects +, -, or a number"
   is_omansory "$(active_layout)" || die "Omansory is not active on this workspace"
-  hyprctl dispatch layoutmsg "cols $arg" >/dev/null 2>&1 \
-    || hyprctl dispatch "hl.dsp.layout(\"cols $arg\")" >/dev/null
+  hyprctl dispatch "hl.dsp.layout(\"cols $arg\")" >/dev/null
+}
+
+cmd_resize() {
+  local axis="${1:-}" amount="${2:-}"
+  [[ "$axis" == h || "$axis" == v || "$axis" == x || "$axis" == y ]] || die "resize expects h or v"
+  [[ "$amount" =~ ^-?[0-9]+([.][0-9]+)?$ ]] || die "resize amount must be pixels, e.g. -100"
+  if is_omansory "$(active_layout)"; then
+    hyprctl dispatch "hl.dsp.layout(\"resize ${axis} ${amount}\")" >/dev/null
+    return 0
+  fi
+  local x=0 y=0
+  if [[ "$axis" == h || "$axis" == x ]]; then
+    x="$amount"
+  else
+    y="$amount"
+  fi
+  hyprctl dispatch resizeactive "$x" "$y" >/dev/null 2>&1 \
+    || hyprctl dispatch "hl.dsp.window.resize({ x = $x, y = $y, relative = true })" >/dev/null
 }
 
 lua_escape() {
@@ -208,6 +227,30 @@ hl.unbind("${DEFAULT_BIND}")
 o.bind("${DEFAULT_BIND}", "Toggle Omansory masonry on workspace", "${plugin_bin} toggle")
 hl.unbind("${OBSIDIAN_FALLBACK}")
 o.bind("${OBSIDIAN_FALLBACK}", "Obsidian", { launch = "obsidian", focus = "^obsidian\$" })
+hl.unbind("SUPER + code:20")
+o.bind("SUPER + code:20", "Expand window left", "${plugin_bin} resize h -100", { repeating = true })
+hl.unbind("SUPER + code:21")
+o.bind("SUPER + code:21", "Shrink window left", "${plugin_bin} resize h 100", { repeating = true })
+hl.unbind("SUPER + SHIFT + code:20")
+o.bind("SUPER + SHIFT + code:20", "Shrink window up", "${plugin_bin} resize v -100", { repeating = true })
+hl.unbind("SUPER + SHIFT + code:21")
+o.bind("SUPER + SHIFT + code:21", "Expand window down", "${plugin_bin} resize v 100", { repeating = true })
+hl.unbind("SUPER + ALT + code:20")
+o.bind("SUPER + ALT + code:20", "Expand window left a little", "${plugin_bin} resize h -25", { repeating = true })
+hl.unbind("SUPER + ALT + code:21")
+o.bind("SUPER + ALT + code:21", "Shrink window left a little", "${plugin_bin} resize h 25", { repeating = true })
+hl.unbind("SUPER + SHIFT + ALT + code:20")
+o.bind("SUPER + SHIFT + ALT + code:20", "Shrink window up a little", "${plugin_bin} resize v -25", { repeating = true })
+hl.unbind("SUPER + SHIFT + ALT + code:21")
+o.bind("SUPER + SHIFT + ALT + code:21", "Expand window down a little", "${plugin_bin} resize v 25", { repeating = true })
+hl.unbind("SUPER + CTRL + code:20")
+o.bind("SUPER + CTRL + code:20", "Expand window left a lot", "${plugin_bin} resize h -300", { repeating = true })
+hl.unbind("SUPER + CTRL + code:21")
+o.bind("SUPER + CTRL + code:21", "Shrink window left a lot", "${plugin_bin} resize h 300", { repeating = true })
+hl.unbind("SUPER + CTRL + SHIFT + code:20")
+o.bind("SUPER + CTRL + SHIFT + code:20", "Shrink window up a lot", "${plugin_bin} resize v -300", { repeating = true })
+hl.unbind("SUPER + CTRL + SHIFT + code:21")
+o.bind("SUPER + CTRL + SHIFT + code:21", "Expand window down a lot", "${plugin_bin} resize v 300", { repeating = true })
 ${END}
 EOF
 }
@@ -320,6 +363,7 @@ case "$cmd" in
   install) cmd_install ;;
   uninstall | remove) cmd_uninstall ;;
   cols | columns) shift; cmd_cols "${1:-}" ;;
+  resize) shift; cmd_resize "${1:-}" "${2:-}" ;;
   -h | --help | help | "") usage ;;
   *) die "unknown command: $cmd" ;;
 esac
