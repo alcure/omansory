@@ -5,6 +5,7 @@
 - Namespaced shell plugin id `alcure.omansory` for the [Omarchy plugin marketplace](https://plugins.omarchy.org/).
 - Install via `omarchy plugin add https://github.com/alcure/omansory.git --enable`; Hyprland binds still need `install.sh`.
 - Root `preview.png` for the directory listing.
+- Plugin folder is copied (not symlinked) so `omarchy plugin validate` accepts a local install.
 
 ## 1.5.0 — 2026-09-17
 

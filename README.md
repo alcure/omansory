@@ -58,7 +58,7 @@ The installer:
 6. Enables the bar widget `alcure.omansory` **to the right of the clock**.
 7. Copies the retrowave stills used in notifications.
 
-`install.sh` is optional for people who only want the glyph. Layout shortcuts need that extra step. If `omarchy refresh hyprland` wipes the Hyprland blocks, run `install.sh` again. The plugin folder itself contains no internal symlinks.
+`install.sh` is optional for people who only want the glyph. Layout shortcuts need that extra step. If `omarchy refresh hyprland` wipes the Hyprland blocks, run `install.sh` again. The plugin folder has no internal symlinks; a local `install.sh` copies files into `~/.config/omarchy/plugins/alcure.omansory` instead of linking.
 
 ## Usage
 

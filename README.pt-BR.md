@@ -58,7 +58,7 @@ O instalador:
 6. Coloca o widget `alcure.omansory` **à direita do relógio**.
 7. Copia os stills retrowave das notificações.
 
-O `install.sh` é opcional se você só quiser o ícone. Os atalhos de layout precisam desse passo. Se `omarchy refresh hyprland` apagar os blocos do Hyprland, rode o `install.sh` de novo. A pasta do plugin não contém symlinks internos.
+O `install.sh` é opcional se você só quiser o ícone. Os atalhos de layout precisam desse passo. Se `omarchy refresh hyprland` apagar os blocos do Hyprland, rode o `install.sh` de novo. A pasta do plugin não contém symlinks internos; o `install.sh` local copia os arquivos para `~/.config/omarchy/plugins/alcure.omansory` em vez de ligar um symlink.
 
 ## Uso
 

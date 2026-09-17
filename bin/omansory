@@ -560,11 +560,26 @@ install_shell_plugin() {
   if [[ -L "$legacy" || -e "$legacy" ]] && [[ "$(readlink -f "$legacy" 2>/dev/null || true)" == "$ROOT" ]]; then
     rm -f "$legacy"
   fi
-  if [[ "$(readlink -f "$dest" 2>/dev/null || true)" != "$ROOT" ]]; then
-    rm -rf "$dest"
-    ln -sfn "$ROOT" "$dest"
+  if [[ -L "$dest" ]]; then
+    rm -f "$dest"
   fi
-  omarchy-plugin-validate "$ROOT"
+  if [[ "$(readlink -f "$dest" 2>/dev/null || true)" != "$ROOT" ]]; then
+    mkdir -p "$dest"
+    rsync -a --delete --exclude .git --exclude '*.bak.omansory.*' "$ROOT/" "$dest/"
+  fi
+  omarchy-plugin-validate "$dest"
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    if omarchy-plugin-list --json 2>/dev/null | jq -e --arg id "$SHELL_PLUGIN_ID" 'any(.[]; .id == $id)' >/dev/null; then
+      omarchy plugin enable "${SHELL_PLUGIN_ID}" --section center --after omarchy.clock >/dev/null 2>&1 \
+        || omarchy plugin enable "${SHELL_PLUGIN_ID}" --section center >/dev/null 2>&1 \
+        || true
+      return 0
+    fi
+    sleep 0.08
+  done
+}
   omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
   local attempt
   for attempt in 1 2 3 4 5 6 7 8 9 10; do
