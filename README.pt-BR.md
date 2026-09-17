@@ -38,6 +38,7 @@ O instalador:
 | Tecla | Ação |
 | --- | --- |
 | `Super+Shift+O` | Liga/desliga masonry no workspace **ativo** |
+| Ícone `󰕰` na barra | Ao lado dos workspaces; clique alterna. Magenta + ids quando ligado. |
 | `Super+Shift+Alt+O` | Obsidian (depois da instalação) |
 | `Super+-` / `Super++` | Alarga / estreita a coluna focada (iguais ao Omarchy) |
 | `Super+Shift+-` / `Super+Shift++` | Encolhe / cresce a janela focada na vertical |
@@ -57,7 +58,7 @@ Ao **ligar**, aparece o cartão da grade magenta (ON · ATIVO). Ao **desligar**,
 
 ## O que o layout faz
 
-Empacota na coluna mais baixa: a janela tenta manter a altura que já tinha; se a coluna estourar a tela, escala para caber; o espaço que sobrar vira furo (wallpaper). Uma janela só ainda ocupa o workspace inteiro. `layoutmsg cols` muda o número de colunas daquele workspace.
+O empilhamento em colunas iguais continua em `omansory mode columns`. O padrão **fit** usa um bin skyline: navegadores tendem a ficar largos, terminais altos, e as peças se encaixam com furos de wallpaper. As janelas continuam retângulos — o Hyprland não recorta em L — mas o arranjo deixa de ser uma grade perfeita.
 
 Janelas flutuantes / pinadas (incluindo o pop-out `Super+O` do Omarchy) ficam de fora.
 

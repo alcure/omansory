@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 — 2026-09-17
+
+- Bar glyph next to the workspaces (magenta when masonry is on, with the workspace ids) and a retrowave overlay flash on toggle.
+- Default pack is interlocking skyline tiles (still rectangles — Wayland cannot clip L-shapes). `omansory mode columns` restores the old grid.
+
 ## 1.1.1 — 2026-09-17
 
 - Fix overlapping / ghost windows when leaving Hyprland scrolling: ignore tape geometry, disable popin during the switch, drop leftover fullscreen, reset the masonry pack, and force a renderer reload.

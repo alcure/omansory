@@ -38,6 +38,7 @@ The installer:
 | Key | Action |
 | --- | --- |
 | `Super+Shift+O` | Toggle masonry on the **active** workspace |
+| Bar glyph `󰕰` | Lives next to the workspace pills; click toggles. Magenta + ids when on. |
 | `Super+Shift+Alt+O` | Obsidian (after install) |
 | `Super+-` / `Super++` | Widen / narrow the focused column (same as Omarchy) |
 | `Super+Shift+-` / `Super+Shift++` | Shorten / grow the focused window vertically |
@@ -57,7 +58,7 @@ Turning it **on** shows the magenta-grid card (ON · ATIVO). Turning it **off** 
 
 ## What you get
 
-Shortest-column packing: windows keep a remembered height when they can; a column that would overflow is scaled to the monitor; leftover space stays as wallpaper holes. One window still fills the workspace. `layoutmsg cols` changes how many columns that workspace uses.
+Shortest-column packing is available as `omansory mode columns`. The default **fit** mode uses a skyline bin: browsers tend to sit wide, terminals tall, so tiles lock together with leftover wallpaper holes. Windows remain rectangles — Hyprland cannot clip an L-shape — but the arrangement is no longer a perfect grid.
 
 Floating / pinned windows (including Omarchy `Super+O` pop-out) are left alone.
 

@@ -42,8 +42,9 @@ Uso: omansory <comando>
   status          Mostra o layout do workspace ativo
   install         Instala layout, atalho Super+Shift+O e imagens
   uninstall       Remove atalho, require e symlink (mantém o clone)
-  cols <n|+|->    Ajusta colunas do workspace ativo (só com Omansory ligado)
-  resize h|v <px> Redimensiona a janela/coluna (atalhos Super± do Omarchy)
+  cols <n|+|->    Força o modo de colunas rígidas
+  mode fit|columns  Encaixe (padrão) ou colunas
+  resize h|v <px> Redimensiona a janela (atalhos Super± do Omarchy)
 
 Omansory substitui o atalho padrão do Obsidian (Super+Shift+O).
 Na instalação, o Obsidian é remapeado para Super+Shift+Alt+O.
@@ -58,8 +59,9 @@ Usage: omansory <command>
   status          Show the active workspace layout
   install         Install layout, Super+Shift+O bind, and images
   uninstall       Remove bind, require, and symlink (keeps the clone)
-  cols <n|+|->    Change column count on the active workspace (Omansory on)
-  resize h|v <px> Resize the focused column/window (Omarchy Super± keys)
+  cols <n|+|->    Switch to rigid columns
+  mode fit|columns  Interlock (default) or columns
+  resize h|v <px> Resize the focused window (Omarchy Super± keys)
 
 Omansory replaces the stock Obsidian shortcut (Super+Shift+O).
 Install remaps Obsidian to Super+Shift+Alt+O.
@@ -139,6 +141,13 @@ reload_renderer() {
   hyprctl dispatch "hl.dsp.force_renderer_reload()" >/dev/null 2>&1 || true
 }
 
+flash_osd() {
+  local mode="$1" workspace="$2"
+  local payload
+  payload=$(jq -nc --arg mode "$mode" --argjson workspace "${workspace:-0}" '{mode:$mode, workspace:$workspace}')
+  omarchy-shell shell summon omansory "$payload" >/dev/null 2>&1 || true
+}
+
 restore_animations_later() {
   local previous="$1"
   local token="$2"
@@ -179,13 +188,23 @@ set_layout() {
 
   reload_renderer
   restore_animations_later "$prev_anim" "$token"
+  flash_osd "$mode" "$workspace"
   notify "$mode" "$workspace"
 }
 
 cmd_status() {
-  local workspace layout
+  local workspace layout ids json=0
+  if [[ "${1:-}" == --json ]]; then
+    json=1
+  fi
   workspace="$(active_workspace)"
   layout="$(active_layout)"
+  ids="$(hyprctl workspaces -j | jq -c '[.[] | select((.tiledLayout // "") | test("omansory")) | .id]')"
+  if ((json)); then
+    jq -nc --argjson ws "${workspace:-0}" --arg layout "$layout" --argjson ids "${ids:-[]}" \
+      '{workspace:$ws, layout:$layout, active:(($layout|tostring)|test("omansory")), workspaces:$ids}'
+    return 0
+  fi
   if pt; then
     echo "workspace ${workspace}: ${layout}"
     if is_omansory "$layout"; then
@@ -193,6 +212,7 @@ cmd_status() {
     else
       echo "Omansory: desligado"
     fi
+    echo "workspaces: ${ids}"
   else
     echo "workspace ${workspace}: ${layout}"
     if is_omansory "$layout"; then
@@ -200,6 +220,7 @@ cmd_status() {
     else
       echo "Omansory: off"
     fi
+    echo "workspaces: ${ids}"
   fi
 }
 
@@ -243,6 +264,13 @@ cmd_toggle() {
   else
     cmd_on
   fi
+}
+
+cmd_mode() {
+  local arg="${1:-fit}"
+  [[ "$arg" == fit || "$arg" == columns ]] || die "mode expects fit or columns"
+  is_omansory "$(active_layout)" || die "Omansory is not active on this workspace"
+  hyprctl dispatch "hl.dsp.layout(\"mode ${arg}\")" >/dev/null
 }
 
 cmd_cols() {
@@ -378,12 +406,34 @@ install_files() {
   install -m 644 "$ROOT/share/omansory/off.jpg" "$SHARE/off.jpg"
 }
 
+install_shell_plugin() {
+  local dest="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/omansory"
+  mkdir -p "$(dirname "$dest")"
+  if [[ "$(readlink -f "$dest" 2>/dev/null || true)" != "$ROOT" ]]; then
+    rm -rf "$dest"
+    ln -sfn "$ROOT" "$dest"
+  fi
+  omarchy-plugin-validate "$ROOT"
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    if omarchy-plugin-list --json 2>/dev/null | jq -e --arg id omansory 'any(.[]; .id == $id)' >/dev/null; then
+      omarchy plugin enable omansory --section left --after omarchy.workspaces >/dev/null 2>&1 \
+        || omarchy plugin enable omansory --section left >/dev/null 2>&1 \
+        || true
+      return 0
+    fi
+    sleep 0.08
+  done
+}
+
 cmd_install() {
   [[ -f "$HYPRLAND_LUA" ]] || die "missing $HYPRLAND_LUA"
   [[ -f "$BINDINGS_LUA" ]] || die "missing $BINDINGS_LUA"
   cp -a "$HYPRLAND_LUA" "$HYPRLAND_LUA.bak.omansory.$(date +%s)"
   cp -a "$BINDINGS_LUA" "$BINDINGS_LUA.bak.omansory.$(date +%s)"
   install_files
+  install_shell_plugin
   upsert_marked_block "$HYPRLAND_LUA" "$(hyprland_block)" 'require("default.hypr.toggles")'
   upsert_marked_block "$BINDINGS_LUA" "$(bindings_block)" ""
   hyprctl reload >/dev/null 2>&1 || true
@@ -391,10 +441,12 @@ cmd_install() {
     echo "Omansory instalado."
     echo "Atalho: Super+Shift+O (toggle no workspace ativo)."
     echo "Obsidian: Super+Shift+Alt+O."
+    echo "O ícone fica ao lado dos workspaces; um cartão retrowave aparece no toggle."
   else
     echo "Omansory installed."
     echo "Shortcut: Super+Shift+O (toggle on the active workspace)."
     echo "Obsidian: Super+Shift+Alt+O."
+    echo "Bar glyph sits next to the workspaces; a retrowave card flashes on toggle."
   fi
 }
 
@@ -415,9 +467,10 @@ case "$cmd" in
   toggle) cmd_toggle ;;
   on | enable) cmd_on ;;
   off | disable) cmd_off ;;
-  status) cmd_status ;;
+  status) shift; cmd_status "$@" ;;
   install) cmd_install ;;
   uninstall | remove) cmd_uninstall ;;
+  mode) shift; cmd_mode "${1:-fit}" ;;
   cols | columns) shift; cmd_cols "${1:-}" ;;
   resize) shift; cmd_resize "${1:-}" "${2:-}" ;;
   -h | --help | help | "") usage ;;

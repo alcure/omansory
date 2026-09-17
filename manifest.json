@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "omansory",
+  "name": "Omansory",
+  "version": "1.2.0",
+  "author": "alcure",
+  "license": "MIT",
+  "homepage": "https://github.com/alcure/omansory",
+  "description": "Per-workspace interlocking masonry for Omarchy / Hyprland, with a bar glyph beside the workspaces and a retrowave on/off flash.",
+  "kinds": [
+    "bar-widget",
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "overlay": "Overlay.qml"
+  },
+  "barWidget": {
+    "displayName": "Omansory",
+    "description": "Shows which workspaces are in masonry. Click toggles the active workspace.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "left"
+  }
+}

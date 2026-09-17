@@ -1,11 +1,23 @@
--- Omansory: per-workspace masonry layout for Hyprland 0.55+ / Omarchy.
+-- Omansory: per-workspace interlocking masonry for Hyprland 0.55+ / Omarchy.
 -- Register as lua:omansory. Toggle with `omansory toggle` (Super+Shift+O).
+-- Windows stay axis-aligned rectangles (Wayland cannot clip L-shapes); packing
+-- uses a skyline bin so tiles lock together instead of a rigid column grid.
 
 local MIN_H = 96
+local MIN_W = 160
 local MIN_FRAC = 0.12
 local LAYOUT_NAME = "omansory"
 
 local workspaces = {}
+
+local PRESETS = {
+  { 0.62, 0.48 },
+  { 0.38, 0.70 },
+  { 0.50, 0.42 },
+  { 0.45, 0.58 },
+  { 0.33, 0.52 },
+  { 0.55, 0.38 },
+}
 
 local function box(x, y, w, h)
   return { x = x, y = y, w = w, h = h }
@@ -78,15 +90,21 @@ local function ws_state(ctx)
   local ws = workspaces[id]
   if not ws then
     ws = {
+      mode = "fit",
       n_cols = default_columns(ctx.area.w),
       frac = nil,
       columns = {},
       height = {},
       user_h = {},
+      size = {},
+      user_size = {},
       last_box = {},
       last_order = {},
     }
     workspaces[id] = ws
+  end
+  if not ws.mode then
+    ws.mode = "fit"
   end
   return ws, id
 end
@@ -191,6 +209,8 @@ local function sync_columns(ctx, ws)
     if not present[id] then
       ws.height[id] = nil
       ws.user_h[id] = nil
+      ws.size[id] = nil
+      ws.user_size[id] = nil
       ws.last_box[id] = nil
     end
   end
@@ -230,15 +250,158 @@ local function sync_columns(ctx, ws)
 end
 
 local function preferred_height(ws, target, id, area_h, fallback)
-  -- Never trust window.size here: leaving scrolling reports tape/camera boxes
-  -- (full strip width, tiny height) and that packs into overlapping slices.
   if ws.user_h[id] and ws.height[id] and ws.height[id] > 0 then
     return clamp(ws.height[id], MIN_H, area_h)
   end
   return fallback
 end
 
-local function place_masonry(ctx)
+local function window_class(target)
+  local window = target.window
+  return string.lower((window and (window.class or window.initial_class)) or "")
+end
+
+local function classify(class)
+  if class:find("brave", 1, true) or class:find("firefox", 1, true) or class:find("chrom", 1, true) or class:find("webkit", 1, true) then
+    return "wide"
+  end
+  if class:find("ghostty", 1, true) or class:find("kitty", 1, true) or class:find("alacritty", 1, true) or class:find("foot", 1, true) or class:find("agent", 1, true) or class:find("code", 1, true) then
+    return "tall"
+  end
+  return "tile"
+end
+
+local function desired_size(ws, target, id, index, area)
+  if ws.user_size[id] and ws.size[id] then
+    return clamp(ws.size[id].w, MIN_W, area.w), clamp(ws.size[id].h, MIN_H, area.h)
+  end
+  local kind = classify(window_class(target))
+  local preset = PRESETS[((index - 1) % #PRESETS) + 1]
+  local fw, fh = preset[1], preset[2]
+  if kind == "wide" then
+    fw, fh = math.max(fw, 0.58), math.min(fh, 0.55)
+  elseif kind == "tall" then
+    fw, fh = math.min(fw, 0.42), math.max(fh, 0.58)
+  end
+  return clamp(area.w * fw, MIN_W, area.w), clamp(area.h * fh, MIN_H, area.h)
+end
+
+local function merge_skyline(segs)
+  table.sort(segs, function(a, b)
+    return a.x < b.x
+  end)
+  local out = {}
+  for _, seg in ipairs(segs) do
+    if seg.w > 0.5 then
+      local last = out[#out]
+      if last and math.abs((last.x + last.w) - seg.x) < 0.5 and math.abs(last.y - seg.y) < 0.5 then
+        last.w = last.w + seg.w
+      else
+        table.insert(out, { x = seg.x, y = seg.y, w = seg.w })
+      end
+    end
+  end
+  return out
+end
+
+local function height_at(skyline, x, width)
+  local maxy = 0
+  local x2 = x + width
+  for _, seg in ipairs(skyline) do
+    local a = math.max(x, seg.x)
+    local b = math.min(x2, seg.x + seg.w)
+    if b > a + 0.5 then
+      maxy = math.max(maxy, seg.y)
+    end
+  end
+  return maxy
+end
+
+local function insert_box(skyline, x, y, w, h)
+  local x2 = x + w
+  local y2 = y + h
+  local new = {}
+  for _, seg in ipairs(skyline) do
+    local s1, s2 = seg.x, seg.x + seg.w
+    if s2 <= x + 0.5 or s1 >= x2 - 0.5 then
+      table.insert(new, seg)
+    else
+      if s1 < x - 0.5 then
+        table.insert(new, { x = s1, y = seg.y, w = x - s1 })
+      end
+      if s2 > x2 + 0.5 then
+        table.insert(new, { x = x2, y = seg.y, w = s2 - x2 })
+      end
+    end
+  end
+  table.insert(new, { x = x, y = y2, w = w })
+  return merge_skyline(new)
+end
+
+local function find_pos(skyline, area, w, h)
+  local candidates = { 0 }
+  for _, seg in ipairs(skyline) do
+    table.insert(candidates, seg.x)
+    table.insert(candidates, math.max(0, seg.x + seg.w))
+  end
+  local best_x, best_y = 0, math.huge
+  local found = false
+  for _, x in ipairs(candidates) do
+    if x < 0 then
+      x = 0
+    end
+    if x + w <= area.w + 1 then
+      local y = height_at(skyline, x, w)
+      if y + h <= area.h + 2 and y < best_y then
+        best_x, best_y, found = x, y, true
+      end
+    end
+  end
+  if found then
+    return best_x, best_y, w, h
+  end
+  -- Does not fit at full size: sit on the lowest skyline and shrink to leftover.
+  local x, y = 0, height_at(skyline, 0, math.min(w, area.w))
+  for _, cand in ipairs(candidates) do
+    if cand >= 0 and cand < area.w then
+      local yy = height_at(skyline, cand, math.min(w, area.w - cand))
+      if yy < y then
+        x, y = cand, yy
+      end
+    end
+  end
+  local rw = math.max(MIN_W, area.w - x)
+  local rh = math.max(MIN_H, area.h - y)
+  return x, y, math.min(w, rw), math.min(h, rh)
+end
+
+local function place_fit(ctx)
+  local n = #ctx.targets
+  if n == 0 then
+    return
+  end
+  local ws = ws_state(ctx)
+  local area = ctx.area
+  if n == 1 then
+    ctx.targets[1]:place(area)
+    ws.last_box[target_id(ctx.targets[1])] = { w = area.w, h = area.h }
+    return
+  end
+
+  local skyline = { { x = 0, y = 0, w = area.w } }
+  for i, target in ipairs(ctx.targets) do
+    local id = target_id(target)
+    local dw, dh = desired_size(ws, target, id, i, area)
+    local x, y, w, h = find_pos(skyline, area, dw, dh)
+    if h > 0 and w > 0 then
+      target:place(box(area.x + x, area.y + y, w, h))
+      ws.last_box[id] = { w = w, h = h }
+      skyline = insert_box(skyline, x, y, w, h)
+    end
+  end
+end
+
+local function place_columns(ctx)
   local targets_n = #ctx.targets
   if targets_n == 0 then
     return
@@ -263,7 +426,7 @@ local function place_masonry(ctx)
         if ws.user_h[id] then
           any_user = true
         end
-        table.insert(items, { id = id, target = target, h = height, user = ws.user_h[id] })
+        table.insert(items, { id = id, target = target, h = height })
         total = total + height
       end
     end
@@ -298,6 +461,15 @@ local function place_masonry(ctx)
   end
 end
 
+local function place_masonry(ctx)
+  local ws = ws_state(ctx)
+  if ws.mode == "columns" then
+    place_columns(ctx)
+  else
+    place_fit(ctx)
+  end
+end
+
 local function focused_id(ctx)
   for _, target in ipairs(ctx.targets) do
     local window = target.window
@@ -310,8 +482,29 @@ local function focused_id(ctx)
   end
 end
 
+local function resize_fit(ctx, axis, delta)
+  local ws = ws_state(ctx)
+  local id = focused_id(ctx)
+  if not id then
+    return
+  end
+  local last = ws.size[id] or ws.last_box[id] or { w = ctx.area.w * 0.45, h = ctx.area.h * 0.45 }
+  local w, h = last.w, last.h
+  if axis == "h" then
+    w = clamp(w - delta, MIN_W, ctx.area.w)
+  else
+    h = clamp(h + delta, MIN_H, ctx.area.h)
+  end
+  ws.size[id] = { w = w, h = h }
+  ws.user_size[id] = true
+end
+
 local function resize_horizontal(ctx, delta)
   local ws = ws_state(ctx)
+  if ws.mode ~= "columns" then
+    resize_fit(ctx, "h", delta)
+    return
+  end
   local id = focused_id(ctx)
   if not id then
     return
@@ -320,7 +513,6 @@ local function resize_horizontal(ctx, delta)
   local col = column_of(ws, id) or 1
   ws.frac = normalize_frac(ws.frac, n)
   local step = delta / math.max(1, ctx.area.w)
-  -- Omarchy Super+- sends x=-100 ("expand"); Super++ sends x=+100 ("shrink").
   local grow = -step
   if n == 1 then
     ws.frac[1] = clamp(ws.frac[1] + grow, MIN_FRAC, 1)
@@ -336,6 +528,10 @@ end
 
 local function resize_vertical(ctx, delta)
   local ws = ws_state(ctx)
+  if ws.mode ~= "columns" then
+    resize_fit(ctx, "v", delta)
+    return
+  end
   local id = focused_id(ctx)
   if not id then
     return
@@ -355,7 +551,16 @@ local function handle_msg(ctx, msg)
   rest = rest or ""
   local ws = ws_state(ctx)
 
+  if command == "mode" then
+    if rest == "fit" or rest == "columns" then
+      ws.mode = rest
+      return true
+    end
+    return "omansory: mode expects fit or columns"
+  end
+
   if command == "cols" or command == "columns" then
+    ws.mode = "columns"
     local current = ws.n_cols or default_columns(ctx.area.w)
     if rest == "+" or rest == "inc" then
       ws.n_cols = math.min(6, current + 1)
@@ -363,6 +568,8 @@ local function handle_msg(ctx, msg)
       ws.n_cols = math.max(1, current - 1)
     elseif rest:match("^%d+$") then
       ws.n_cols = clamp(tonumber(rest), 1, 6)
+    elseif rest == "" then
+      return true
     else
       return "omansory: cols expects +, -, or a number 1-6"
     end
@@ -392,7 +599,7 @@ local function handle_msg(ctx, msg)
     return true
   end
 
-  return "omansory: expected cols, reset, or resize h|v <px>"
+  return "omansory: expected mode, cols, reset, or resize h|v <px>"
 end
 
 hl.layout.register(LAYOUT_NAME, {
